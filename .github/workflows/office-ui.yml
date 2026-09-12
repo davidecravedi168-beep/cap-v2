@@ -1,0 +1,58 @@
+name: Validate The Office UI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "index.html"
+      - "app.js"
+      - "universal-office.js"
+      - "universal-office.css"
+      - "styles.css"
+      - "oddities.css"
+      - ".github/workflows/office-ui.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "index.html"
+      - "app.js"
+      - "universal-office.js"
+      - "universal-office.css"
+      - "styles.css"
+      - "oddities.css"
+      - ".github/workflows/office-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: JavaScript syntax
+        run: |
+          node --check app.js
+          node --check universal-office.js
+      - name: Universal Office contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          app=Path('app.js').read_text(encoding='utf-8')
+          ux=Path('universal-office.js').read_text(encoding='utf-8')
+          css=Path('universal-office.css').read_text(encoding='utf-8')
+          required_app=['universal-office.js?v=2.0']
+          required_ux=['Cosa dobbiamo fare?','Aree di lavoro','Progetti','Lavori affidati all’ufficio','SOFTWARE ≠ CENTRO','approval','routePlan','classify']
+          required_css=['.universal-command','.area-grid','.project-grid','.routing-card']
+          missing=[x for x in required_app if x not in app]+[x for x in required_ux if x not in ux]+[x for x in required_css if x not in css]
+          if missing:
+              raise SystemExit('Universal Office contract missing: '+', '.join(missing))
+          print('Universal Office UI contract: OK')
+          PY
+      - name: Whitespace check
+        run: git diff --check
