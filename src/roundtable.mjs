@@ -19,7 +19,10 @@ export async function roundtable(job, call, { context, checkpoint = async () => 
       const out = { ...response, agent, stage }; contributions.push(out);
       await checkpoint({ stage, agent, contributions: [...contributions], failures: [...failures] });
       return out;
-    } catch (e) { stopped(); failures.push({ agent, error: String(e.message || 'Passaggio non disponibile').slice(0, 300) }); return null; }
+    } catch (e) {
+      stopped(); failures.push({ agent, error: String(e.message || 'Passaggio non disponibile').slice(0, 300) });
+      await checkpoint({ stage, agent, contributions: [...contributions], failures: [...failures] }); return null;
+    }
   }
   const specialists = job.plan.team.filter(a => !['Direttore', 'Verity'].includes(a)).slice(0, 2);
   // One call at a time keeps the free service usable and checkpoints unambiguous.

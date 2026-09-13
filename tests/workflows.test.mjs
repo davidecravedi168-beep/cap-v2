@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Workspace, STORE_KEY } from '../src/core.mjs';
+import { Workspace, STORE_KEY, normaliseResponse } from '../src/core.mjs';
 import { Runtime } from '../src/runtime.mjs';
 import { roundtable } from '../src/roundtable.mjs';
 import { contextFor, validateMaterial } from '../src/context.mjs';
@@ -88,4 +88,19 @@ test('Completed roundtable retry starts fresh; interrupted retry keeps its check
     ws.patch(j.id, { status, checkpoint: { contributions: [sample('Sage')] } });
     const next = ws.retry(j.id); assert.equal(!!next.checkpoint, status === 'interrupted');
   }
+});
+test('Default fetch retains the browser global receiver for native methods', async () => {
+  const previous = globalThis.fetch;
+  try {
+    globalThis.fetch = function () { if (this !== globalThis) throw new TypeError('Illegal invocation'); return Promise.resolve(response({ ok: true })); };
+    const rt = new Runtime(office(), { locks: null }); assert.equal((await rt.check()).reachable, true);
+  } finally { globalThis.fetch = previous; }
+});
+test('An automatic router name is not presented as the actual model', () => {
+  const out = normaliseResponse({ zeroCost: true, result: 'Testo', model: 'auto', contributions: [{ agent: 'Direttore', model: 'auto', text: 'Testo' }] }, 'legacy');
+  assert.equal(out.provenance.model, 'Non dichiarato'); assert.equal(out.contributions[0].model, 'Non dichiarato');
+});
+test('Historical completed answers still count as available results', () => {
+  const ws = office(), j = ws.add('Storico'); ws.patch(j.id, { status: 'completed', result: 'Salvato', migrated: true });
+  assert.equal(ws.metrics().ready, 1); assert.equal(ws.metrics().reviewed, 0);
 });

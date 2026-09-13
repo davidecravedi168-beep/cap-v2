@@ -163,7 +163,7 @@ export class Workspace {
   }
   metrics() {
     const jobs = this.state.jobs.filter(j => !j.migrated), finished = jobs.filter(j => terminal(j.status) && !['draft', 'blocked', 'cancelled'].includes(j.status));
-    const ready = jobs.filter(j => ['completed', 'partial'].includes(j.status));
+    const ready = this.state.jobs.filter(j => ['completed', 'partial'].includes(j.status) && j.result);
     return { total: this.state.jobs.length, active: jobs.filter(j => ['running', 'queued'].includes(j.status)).length,
       finished: finished.length, ready: ready.length, failed: finished.filter(j => ['failed', 'interrupted'].includes(j.status)).length,
       reviewed: jobs.filter(j => j.review?.independent === true).length, helpful: jobs.filter(j => j.rating === 1).length,
@@ -175,8 +175,9 @@ export function normaliseResponse(out, mode) {
   if (!out || out.zeroCost !== true) throw Error('Il motore non ha confermato la modalità gratuita.');
   if (out.status && !['completed', 'partial'].includes(out.status)) throw Error(String(out.error || 'Il motore non ha completato il lavoro.'));
   if (typeof out.result !== 'string' || !out.result.trim()) throw Error('Il motore ha restituito una risposta vuota.');
+  const reportedModel = value => value && !['auto', 'unknown', 'openrouter/free'].includes(String(value).toLowerCase()) ? String(value) : 'Non dichiarato';
   const contributions = (Array.isArray(out.contributions) ? out.contributions : []).filter(x => x && typeof x.text === 'string').map(c => ({
-    agent: String(c.agent || 'Direttore'), model: String(c.model || 'Non dichiarato'), provider: String(c.provider || out.provider || 'Non dichiarato'),
+    agent: String(c.agent || 'Direttore'), model: reportedModel(c.model), provider: String(c.provider || out.provider || 'Non dichiarato'),
     text: c.text.slice(0, 60000), durationMs: Number.isFinite(c.durationMs) ? c.durationMs : null,
     usage: c.usage || null, stage: c.stage || 'contribution',
   }));
@@ -184,7 +185,7 @@ export function normaliseResponse(out, mode) {
   return { result: out.result.slice(0, 120000), status: out.status === 'partial' || failures.length ? 'partial' : 'completed',
     qualityReport: typeof out.qualityReport === 'string' ? out.qualityReport : '', contributions, failures,
     review: mode === 'secure' && out.review ? out.review : { independent: false, status: 'not-performed' },
-    provenance: { mode, provider: String(out.provider || contributions[0]?.provider || 'Non dichiarato'), model: String(out.model || contributions[0]?.model || 'Non dichiarato') },
+    provenance: { mode, provider: String(out.provider || contributions[0]?.provider || 'Non dichiarato'), model: reportedModel(out.model || contributions[0]?.model) },
     externalActions: false };
 }
 

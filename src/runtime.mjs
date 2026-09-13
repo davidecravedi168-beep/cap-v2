@@ -3,7 +3,7 @@ import { contextFor } from './context.mjs';
 import { roundtable } from './roundtable.mjs';
 
 export class Runtime {
-  constructor(workspace, { fetcher = fetch, timeoutMs = 65000, locks = globalThis.navigator?.locks } = {}) {
+  constructor(workspace, { fetcher = (...args) => globalThis.fetch(...args), timeoutMs = 65000, locks = globalThis.navigator?.locks } = {}) {
     this.workspace = workspace; this.fetcher = fetcher; this.timeoutMs = timeoutMs;
     this.locks = locks; this.active = null; this.token = ''; this.health = null; this.checking = false;
   }
