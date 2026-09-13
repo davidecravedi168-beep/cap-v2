@@ -17,7 +17,9 @@ const AGENTS={
   Aegis:{provider:'OpenAI',model:'openai/gpt-5.6-sol',reasoning:'high',system:'Sei Aegis, reviewer di sicurezza di The Office. Cerca rischi, privacy, permessi, frodi, effetti irreversibili e assunzioni pericolose.'},
   Verity:{provider:'xAI',model:'x-ai/grok-4.6',reasoning:'xhigh',system:'Sei Verity, devil advocate indipendente di The Office. Prova a confutare il lavoro, cerca errori e alternative migliori. Non dissentire per sport: sii specifico.'},
   Ledger:{provider:'Z.ai',model:'z-ai/glm-5.3',reasoning:'max',system:'Sei Ledger, analista numerico e finanziario di The Office. Controlla formule, ipotesi, unità, scenari e sensibilità. Non inventare dati mancanti.'},
-  Archivist:{provider:'Anthropic',model:'anthropic/claude-fable-5.1',reasoning:'medium',system:'Sei Archivist, memoria di The Office. Organizza contesto, decisioni, precedenti e lezioni; distingui ciò che è ricordato da ciò che è nuovo.'}
+  Archivist:{provider:'Anthropic',model:'anthropic/claude-fable-5.1',reasoning:'medium',system:'Sei Archivist, memoria di The Office. Organizza contesto, decisioni, precedenti e lezioni; distingui ciò che è ricordato da ciò che è nuovo.'},
+  Qualita:{provider:'Anthropic',model:'anthropic/claude-fable-5.1',reasoning:'high',system:'Sei il Direttore Qualità di The Office. Controlla completezza, coerenza, evidenze, assunzioni, errori e aderenza all’incarico. Non riscrivere tutto: emetti un quality report concreto con problemi bloccanti e miglioramenti.'},
+  Executor:{provider:'OpenAI',model:'openai/gpt-6-astra',reasoning:'high',system:'Sei Executor di The Office. Trasforma una decisione approvata in un piano di esecuzione verificabile. Se manca autorizzazione o accesso, fermati e dichiara cosa serve; non fingere di aver eseguito azioni esterne.'}
 };
 
 function safeEqual(a,b){const aa=Buffer.from(a||''),bb=Buffer.from(b||'');return aa.length===bb.length&&aa.length>0&&crypto.timingSafeEqual(aa,bb)}
@@ -28,18 +30,9 @@ function contentOf(message){if(typeof message?.content==='string')return message
 
 async function callFrontier(agent,prompt){
   if(!OPENROUTER_API_KEY)throw new Error('OPENROUTER_API_KEY missing');
-  const payload={
-    model:agent.model,
-    messages:[{role:'system',content:agent.system},{role:'user',content:prompt}],
-    max_tokens:MAX_TOKENS,
-    reasoning:{effort:agent.reasoning||'high'}
-  };
+  const payload={model:agent.model,messages:[{role:'system',content:agent.system},{role:'user',content:prompt}],max_tokens:MAX_TOKENS,reasoning:{effort:agent.reasoning||'high'}};
   if(agent.web)payload.tools=[{type:'openrouter:web_search',parameters:{engine:'auto',max_total_results:12,search_context_size:'high'}}];
-  const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{
-    method:'POST',
-    headers:{Authorization:`Bearer ${OPENROUTER_API_KEY}`,'Content-Type':'application/json','HTTP-Referer':ALLOWED_ORIGIN,'X-OpenRouter-Title':'The Office'},
-    body:JSON.stringify(payload)
-  });
+  const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${OPENROUTER_API_KEY}`,'Content-Type':'application/json','HTTP-Referer':ALLOWED_ORIGIN,'X-OpenRouter-Title':'The Office'},body:JSON.stringify(payload)});
   const data=await r.json();
   if(!r.ok)throw new Error(`OpenRouter ${r.status}: ${data?.error?.message||'request failed'}`);
   const message=data?.choices?.[0]?.message||{};
@@ -48,18 +41,23 @@ async function callFrontier(agent,prompt){
 async function runAgent(name,prompt){const a=AGENTS[name];if(!a)throw new Error(`Unknown agent: ${name}`);const out=await callFrontier(a,prompt);return{agent:name,provider:a.provider,model:out.model,text:out.text,annotations:out.annotations,usage:out.usage}}
 async function execute(job){
   const text=String(job.text||'').trim();if(!text)throw new Error('Missing job text');
-  const requested=Array.isArray(job.team)?job.team.filter(x=>AGENTS[x]):[];
+  const requested=Array.isArray(job.team)?job.team.filter(x=>AGENTS[x]&&!['Qualita','Executor'].includes(x)):[];
   const team=[...new Set(requested.length?requested:[job.owner&&AGENTS[job.owner]?job.owner:'Direttore'])].slice(0,MAX_TEAM);
-  if(team.length===1){const one=await runAgent(team[0],text);return{result:one.text,contributions:[one],failures:[]}}
+  if(team.length===1&&team[0]!=='Direttore'){
+    const one=await runAgent(team[0],text);
+    const quality=await runAgent('Qualita',`INCARICO:\n${text}\n\nOUTPUT DA CONTROLLARE:\n${one.text}`);
+    return{result:one.text,contributions:[one,quality],qualityReport:quality.text,failures:[]};
+  }
   const specialists=team.filter(x=>x!=='Direttore');
   const settled=await Promise.allSettled(specialists.map(name=>runAgent(name,text)));
   const contributions=[],failures=[];
   settled.forEach((item,i)=>{if(item.status==='fulfilled')contributions.push(item.value);else failures.push({agent:specialists[i],error:String(item.reason?.message||item.reason)})});
-  if(!contributions.length){const solo=await runAgent('Direttore',text);return{result:solo.text,contributions:[solo],failures}}
+  if(!contributions.length){const solo=await runAgent('Direttore',text);const quality=await runAgent('Qualita',`INCARICO:\n${text}\n\nOUTPUT DA CONTROLLARE:\n${solo.text}`);return{result:solo.text,contributions:[solo,quality],qualityReport:quality.text,failures}}
   const packet=contributions.map(c=>`### ${c.agent} (${c.model})\n${c.text}`).join('\n\n');
-  const directorPrompt=`INCARICO ORIGINALE:\n${text}\n\nCONTRIBUTI DEL TEAM:\n${packet}\n\nProduci la risposta finale. Evidenzia conflitti, punti incerti, cosa è verificato e la raccomandazione operativa. Non fingere azioni esterne.`;
+  const quality=await runAgent('Qualita',`INCARICO ORIGINALE:\n${text}\n\nCONTRIBUTI DEL TEAM:\n${packet}\n\nControlla il lavoro prima della sintesi finale.`);
+  const directorPrompt=`INCARICO ORIGINALE:\n${text}\n\nCONTRIBUTI DEL TEAM:\n${packet}\n\nQUALITY REPORT:\n${quality.text}\n\nProduci la risposta finale correggendo i problemi reali segnalati. Evidenzia ciò che resta incerto e non fingere azioni esterne.`;
   const director=await runAgent('Direttore',directorPrompt);
-  return{result:director.text,contributions:[...contributions,director],failures};
+  return{result:director.text,contributions:[...contributions,quality,director],qualityReport:quality.text,failures};
 }
 
 const server=http.createServer(async(req,res)=>{
