@@ -2,20 +2,34 @@
 'use strict';
 const API='https://br-floral-shadow-aygwywoy-officefree.compute.c-5.us-east-2.aws.neon.tech';
 const KEY='the-office:runtime-free:v1';
-const read=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch{return[]}};
-const write=v=>localStorage.setItem(KEY,JSON.stringify(v.slice(0,100)));
-const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[m]));
+const REQUEST_TIMEOUT=35000;
+const STALE_AFTER=45000;
+function rawRead(){try{return JSON.parse(localStorage.getItem(KEY)||'[]')}catch{return[]}}
+function write(v){localStorage.setItem(KEY,JSON.stringify(v.slice(0,100)))}
+function read(){
+ const q=rawRead();let changed=false;const now=Date.now();
+ q.forEach(j=>{if(['sending','working','queued'].includes(j.status)){const age=now-Date.parse(j.createdAt||0);if(Number.isFinite(age)&&age>STALE_AFTER){j.status='gateway-error';j.error='La richiesta precedente è scaduta. Nessun costo è stato generato: puoi riprovare.';j.failedAt=new Date().toISOString();changed=true}}});
+ if(changed)write(q);return q
+}
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 function infer(text,source){if(source?.startsWith('avatar:')){const n=source.split(':')[1];return{owner:n,team:[n]}}let p=null;try{p=window.TheOfficeUniversal?.routePlan?.(text)}catch{}const team=(p?.route?.team||['Direttore']).map(x=>x==='Atlas'?'Direttore':x);return{owner:'Direttore',team:[...new Set(['Direttore',...team])].slice(0,3)}}
 function save(job){const q=read().filter(x=>x.id!==job.id);q.unshift({...job});write(q);render();return job}
 async function submit(text,source='office'){
  const clean=String(text||'').trim();if(!clean)return null;const a=infer(clean,source);const job={id:`free-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,text:clean,source,owner:a.owner,team:a.team,status:'sending',zeroCost:true,createdAt:new Date().toISOString(),models:a.team.reduce((o,n)=>{const m=window.OfficeModelBoard?.get?.(n);if(m)o[n]={provider:m.provider,model:m.model,label:m.label};return o},{})};save(job);
- try{const r=await fetch(`${API}/v1/jobs`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(job)});const out=await r.json().catch(()=>({}));if(!r.ok)throw new Error(out.error||`Gateway ${r.status}`);if(out.zeroCost!==true)throw new Error('Il gateway non ha confermato il vincolo 0 €');job.status=out.status||'completed';job.result=out.result||'';job.qualityReport=out.qualityReport||'';job.contributions=out.contributions||[];job.failures=out.failures||[];job.completedAt=new Date().toISOString();return save(job)}catch(e){job.status='gateway-error';job.error=String(e?.message||e);return save(job)}
+ const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT);const working=setTimeout(()=>{if(job.status==='sending'){job.status='working';save(job)}},900);
+ try{
+  const r=await fetch(`${API}/v1/jobs`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(job),signal:controller.signal});
+  const out=await r.json().catch(()=>({}));if(!r.ok)throw new Error(out.error||`Gateway ${r.status}`);if(out.zeroCost!==true)throw new Error('Il gateway non ha confermato il vincolo 0 €');
+  job.status=out.status||'completed';job.result=out.result||'';job.qualityReport=out.qualityReport||'';job.contributions=out.contributions||[];job.failures=out.failures||[];job.completedAt=new Date().toISOString();return save(job)
+ }catch(e){
+  job.status='gateway-error';job.error=e?.name==='AbortError'?'Il motore gratuito non ha risposto entro 35 secondi. Nessun costo: riprova l’incarico.':String(e?.message||e);job.failedAt=new Date().toISOString();return save(job)
+ }finally{clearTimeout(timeout);clearTimeout(working)}
 }
-function renderStatus(){const line=document.querySelector('.hq-statusline');if(!line)return;let w=document.getElementById('officeRuntimeStatusWrap');if(!w){w=document.createElement('span');w.id='officeRuntimeStatusWrap';w.className='runtime-status-wrap';w.innerHTML='<span id="officeRuntimeStatus"></span>';line.appendChild(w)}const pending=read().filter(x=>x.status!=='completed').length;const e=document.getElementById('officeRuntimeStatus');if(e)e.textContent=`0 € · AI FREE ONLINE · ${pending} in coda`;w.title='Neon Function Free + BlockRun free tier. Nessun account, wallet o chiave provider richiesti.'}
+function renderStatus(){const line=document.querySelector('.hq-statusline');if(!line)return;let w=document.getElementById('officeRuntimeStatusWrap');if(!w){w=document.createElement('span');w.id='officeRuntimeStatusWrap';w.className='runtime-status-wrap';w.innerHTML='<span id="officeRuntimeStatus"></span>';line.appendChild(w)}const pending=read().filter(x=>!['completed','gateway-error','failed'].includes(x.status)).length;const e=document.getElementById('officeRuntimeStatus');if(e)e.textContent=`0 € · AI FREE · ${pending} attivi`;w.title='Runtime gratuito con timeout automatico: nessun incarico può restare bloccato all’infinito.'}
 function renderResults(){const view=document.getElementById('view-tasks');if(!view)return;let h=document.getElementById('officeRuntimeResults');if(!h){h=document.createElement('section');h.id='officeRuntimeResults';h.className='runtime-results';view.prepend(h)}const jobs=read().slice(0,8);if(!jobs.length){h.innerHTML='';return}h.innerHTML=`<div class="section-heading compact"><div><span class="eyebrow">ZERO COST RUNTIME</span><h2>Risultati e coda</h2></div><span class="status-pill live">0 €</span></div><div class="runtime-job-list">${jobs.map(j=>`<article class="runtime-job ${esc(j.status)}"><div class="runtime-job-top"><div><span class="eyebrow">${esc((j.team||[]).join(' · '))}</span><h3>${esc(j.text)}</h3></div><span class="status-pill ${j.status==='completed'?'live':j.status==='gateway-error'?'review':'queued'}">${esc(String(j.status).toUpperCase())}</span></div>${j.result?`<div class="runtime-answer">${esc(j.result).replace(/\n/g,'<br>')}</div>`:''}${j.qualityReport?`<details class="runtime-answer"><summary>Quality report</summary>${esc(j.qualityReport).replace(/\n/g,'<br>')}</details>`:''}${j.error?`<div class="runtime-error">${esc(j.error)}</div>`:''}<div class="runtime-models">${Object.entries(j.models||{}).map(([n,m])=>`<span>${esc(n)} · ${esc(m.label||m.model)}</span>`).join('')}</div></article>`).join('')}</div>`}
 function render(){renderStatus();renderResults()}
 function patch(){const u=window.TheOfficeUniversal;if(!u?.createWork||u.__freeRuntimePatched)return false;const original=u.createWork.bind(u);u.createWork=function(text,source){const result=original(text,source);submit(text,source);return result};u.__freeRuntimePatched=true;return true}
-function mount(){render();let n=0;const t=setInterval(()=>{n++;if(patch()||n>40)clearInterval(t)},125)}
+function mount(){read();render();let n=0;const t=setInterval(()=>{n++;if(patch()||n>40)clearInterval(t)},125)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
-window.TheOfficeRuntime={submit,queue:read,config:()=>({apiBase:API,mode:'zero-cost',zeroCost:true,noAccount:true}),infer,render};
+window.TheOfficeRuntime={submit,queue:read,config:()=>({apiBase:API,mode:'zero-cost',zeroCost:true,noAccount:true,timeoutMs:REQUEST_TIMEOUT}),infer,render};
 })();
