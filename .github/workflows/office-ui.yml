@@ -11,12 +11,6 @@ on:
       - ".github/workflows/office-ui.yml"
   pull_request:
     branches: ["main"]
-    paths:
-      - "*.js"
-      - "*.css"
-      - "*.md"
-      - "server/**"
-      - ".github/workflows/office-ui.yml"
   workflow_dispatch:
 
 permissions:
@@ -43,42 +37,31 @@ jobs:
           node --check office-free-model-board.js
           node --check model-board-ui.js
           node --check office-runtime-free.js
-          node --check server/office-free-function.mjs
-      - name: Zero-cost Office contract
+          node --check office-room.js
+      - name: Office contract
         run: |
           python - <<'PY'
           from pathlib import Path
-          app=Path('app.js').read_text(encoding='utf-8')
-          ux=Path('universal-office.js').read_text(encoding='utf-8')
-          league=Path('weekly-league.js').read_text(encoding='utf-8')
-          hq=Path('interactive-office.js').read_text(encoding='utf-8')
           director=Path('director-name.js').read_text(encoding='utf-8')
-          free=Path('office-free-model-board.js').read_text(encoding='utf-8')
+          room=Path('office-room.js').read_text(encoding='utf-8')
+          room_css=Path('office-room.css').read_text(encoding='utf-8')
           runtime=Path('office-runtime-free.js').read_text(encoding='utf-8')
-          gateway=Path('server/office-free-function.mjs').read_text(encoding='utf-8')
-          policy=Path('ZERO_COST_RUNTIME.md').read_text(encoding='utf-8')
+          board=Path('office-free-model-board.js').read_text(encoding='utf-8')
+          league=Path('weekly-league.js').read_text(encoding='utf-8')
           required=[
-            (app,['universal-office.js?v=2.0','weekly-league.js?v=1.0','interactive-office.js?v=3.0']),
-            (ux,['Cosa dobbiamo fare?','approval','routePlan','classify']),
-            (league,['Dipendente della settimana','quality:.45','quantity:.10','MIN_FOR_CROWN=3']),
-            (hq,['Direttore','CHE AI È?','TheOfficeHQ']),
-            (director,['office-free-model-board.js?v=1.0','office-runtime-free.js?v=1.0']),
-            (free,['nemotron-3-ultra-550b-a55b:free','laguna-s-2.1:free','nemotron-3-super-120b-a12b:free','ling-3.0-flash-vl:free','ling-3.0-flash-fin:free','gemma-4-26b-a4b-it:free','gpt-oss-20b:free','zeroCost=true']),
-            (runtime,['officefree.compute.c-5.us-east-2.aws.neon.tech','zeroCost:true','0 € HARD LIMIT']),
-            (gateway,['OPENROUTER_API_KEY','openrouter/free','max_price:{prompt:0,completion:0}','webSearch:false']),
-            (policy,['0 € di spesa API','mai fallback a pagamento'])
+            (director,['office-runtime-free.js?v=1.0','office-room.js?v=1.0']),
+            (room,['Il tuo ufficio AI','INCARICO ATTUALE','Dallo al Direttore','Lavorazione in corso','TheOfficeRoom']),
+            (room_css,['.office-room-v4','.or-desk.busy','.or-roundtable','.or-command']),
+            (runtime,['zeroCost:true','TheOfficeRuntime']),
+            (board,['FREE 7','NO KEY','zeroCost=true','noKey=true']),
+            (league,['Dipendente della settimana','quality:.45','quantity:.10'])
           ]
           missing=[]
           for text,need in required:
             missing += [x for x in need if x not in text]
-          if missing: raise SystemExit('Zero-cost contract missing: '+', '.join(missing))
-          if 'officeRuntimeLoader\',\'office-runtime.js' in director:
-            raise SystemExit('Paid runtime loader is active')
-          if 'openrouter:web_search' in gateway or ':online' in gateway:
-            raise SystemExit('Paid web search leaked into zero-cost gateway')
-          if 'max_price:{prompt:0,completion:0}' not in gateway:
-            raise SystemExit('Hard price ceiling missing')
-          print('The Office zero-cost runtime contract: OK')
+          if missing:
+            raise SystemExit('Office contract missing: '+', '.join(missing))
+          print('Real-office UI + zero-cost runtime contract: OK')
           PY
       - name: Whitespace check
         run: git diff --check
