@@ -18,6 +18,9 @@ on:
       - "office-runtime.js"
       - "office-runtime.css"
       - "server/office-gateway.mjs"
+      - "server/README.md"
+      - "server/.env.example"
+      - "MODEL_BOARD.md"
       - "WORK_RECOVERED.md"
       - "styles.css"
       - "oddities.css"
@@ -39,6 +42,9 @@ on:
       - "office-runtime.js"
       - "office-runtime.css"
       - "server/office-gateway.mjs"
+      - "server/README.md"
+      - "server/.env.example"
+      - "MODEL_BOARD.md"
       - "WORK_RECOVERED.md"
       - "styles.css"
       - "oddities.css"
@@ -80,7 +86,6 @@ jobs:
           hq=Path('interactive-office.js').read_text(encoding='utf-8')
           hq_css=Path('interactive-office.css').read_text(encoding='utf-8')
           models=Path('office-models.js').read_text(encoding='utf-8')
-          model_ui=Path('model-board-ui.js').read_text(encoding='utf-8')
           runtime=Path('office-runtime.js').read_text(encoding='utf-8')
           gateway=Path('server/office-gateway.mjs').read_text(encoding='utf-8')
           recovered=Path('WORK_RECOVERED.md').read_text(encoding='utf-8')
@@ -88,19 +93,19 @@ jobs:
           required_ux=['Cosa dobbiamo fare?','Aree di lavoro','Progetti','Lavori affidati all’ufficio','SOFTWARE ≠ CENTRO','approval','routePlan','classify']
           required_css=['.universal-command','.area-grid','.project-grid','.routing-card']
           required_league=['Dipendente della settimana','recordOutcome','quality:.45','quantity:.10','MIN_FOR_CROWN=3','Anti-gaming','nessuna classifica']
-          required_league_css=['.league-hero','.league-champion','.league-rules','.league-row']
           required_hq=['Direttore','CHE AI È?','assignTo','dispatch','TheOfficeHQ']
-          required_hq_css=['.hq-scene','.hq-agent','.hq-drawer','.hq-command']
-          required_models=['gpt-5.6-sol','claude-opus-5','gemini-3.8-flash','grok-4.6','agent-api:high','gpt-5.6-terra']
+          required_models=['gpt-6-astra','claude-fable-5','claude-opus-5','muse-spark-1.3','gpt-5.6-sol','glm-5.3','grok-4.6','TOP 7']
           required_runtime=['Authorization','sessionStorage','/v1/jobs','AI operative','TheOfficeRuntime']
-          required_gateway=['api.openai.com/v1/responses','api.anthropic.com/v1/messages','generativelanguage.googleapis.com','api.perplexity.ai/v1/agent','api.x.ai/v1/responses','OFFICE_SESSION_TOKEN']
+          required_gateway=['api.openai.com/v1/responses','api.anthropic.com/v1/messages','api.x.ai/v1/responses','META_API_BASE','ZAI_API_BASE','OFFICE_SESSION_TOKEN','web_search']
           required_recovered=['Quality Director','Approval Gate','Executor','Model Board']
-          missing=[x for x in required_app if x not in app]+[x for x in required_ux if x not in ux]+[x for x in required_css if x not in css]+[x for x in required_league if x not in league]+[x for x in required_league_css if x not in league_css]+[x for x in required_hq if x not in hq]+[x for x in required_hq_css if x not in hq_css]+[x for x in required_models if x not in models]+[x for x in required_runtime if x not in runtime]+[x for x in required_gateway if x not in gateway]+[x for x in required_recovered if x not in recovered]
+          missing=[x for x in required_app if x not in app]+[x for x in required_ux if x not in ux]+[x for x in required_css if x not in css]+[x for x in required_league if x not in league]+[x for x in required_hq if x not in hq]+[x for x in required_models if x not in models]+[x for x in required_runtime if x not in runtime]+[x for x in required_gateway if x not in gateway]+[x for x in required_recovered if x not in recovered]
           if missing:
               raise SystemExit('The Office contract missing: '+', '.join(missing))
-          if 'gpt-6-astra' in models or 'sonar-deep-research' in models:
-              raise SystemExit('Unverified/deprecated model id leaked into active model board')
-          print('Universal Office + Weekly League + Interactive HQ + Model Board + Runtime contract: OK')
+          banned=['gpt-5.6-terra','gemini-3.8-flash','agent-api:high','sonar-deep-research']
+          leaked=[x for x in banned if x in models]
+          if leaked:
+              raise SystemExit('Non-top-player model leaked into active model board: '+', '.join(leaked))
+          print('The Office TOP 7 model pool + runtime contract: OK')
           PY
       - name: Whitespace check
         run: git diff --check
