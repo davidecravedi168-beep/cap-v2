@@ -20,8 +20,10 @@ const PROFILES={
   Ledger:{provider:'Z.ai',model:'z-ai/glm-5.3',label:'GLM-5.3',backup:'GPT-6 Astra',tier:'FRONTIER 7',reason:'analisi strutturata, calcoli, coding e long-horizon reasoning'},
   Archivist:{provider:'Anthropic',model:'anthropic/claude-fable-5.1',label:'Claude Fable 5.1 + retrieval',backup:'GPT-6 Astra',tier:'FRONTIER 7',reason:'contesto lungo, memoria, documenti e continuità tra lavori'},
   Qualita:{provider:'Anthropic',model:'anthropic/claude-fable-5.1',label:'Claude Fable 5.1',backup:'Grok 4.6',tier:'FRONTIER 7',reason:'quality gate finale, controllo completezza, coerenza, evidenze e standard del deliverable'},
-  Executor:{provider:'OpenAI',model:'openai/gpt-6-astra',label:'GPT-6 Astra',backup:'Claude Fable 5.1',tier:'FRONTIER 7',reason:'esecuzione controllata di azioni e workflow dopo approval esplicita'}
+  Executor:{provider:'OpenAI',model:'openai/gpt-6-astra',label:'GPT-6 Astra',backup:'Claude Fable 5.1',tier:'FRONTIER 7',reason:'esecuzione controllata di workflow approvati'}
 };
 function get(name){return PROFILES[name]||null}
-window.OfficeModelBoard={profiles:PROFILES,top7:TOP7,get,version:'2026-09-13.5',principle:'Ogni dipendente usa soltanto il pool Frontier 7 approvato; ruolo stabile, modello sostituibile dal Model Board.',verifiedAt:'2026-09-13',benchmarkBasis:'Artificial Analysis Intelligence Index v4.3 + role fit + provider diversity'};
+window.OfficeModelBoard={profiles:PROFILES,top7:TOP7,get,version:'2026-09-13.6',principle:'Ogni dipendente usa soltanto il pool Frontier 7 approvato; ruolo stabile, modello sostituibile dal Model Board.',verifiedAt:'2026-09-13',benchmarkBasis:'Artificial Analysis Intelligence Index v4.3 + role fit + provider diversity'};
+if(!document.getElementById('officeExtraRolesCss')){const l=document.createElement('link');l.id='officeExtraRolesCss';l.rel='stylesheet';l.href='office-extra-roles.css?v=1.0';document.head.appendChild(l)}
+if(!document.getElementById('officeExtraRolesLoader')){const s=document.createElement('script');s.id='officeExtraRolesLoader';s.src='office-extra-roles.js?v=1.0';s.defer=true;document.head.appendChild(s)}
 })();
