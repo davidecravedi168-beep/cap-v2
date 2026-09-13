@@ -6,14 +6,14 @@ const ALLOWED_ORIGIN=process.env.OFFICE_ALLOWED_ORIGIN||'https://davidecravedi16
 const SESSION_TOKEN=process.env.OFFICE_SESSION_TOKEN||'';
 
 const AGENTS={
-  Direttore:{provider:'openai',model:'gpt-6-astra',system:'Sei il Direttore di The Office. Coordina specialisti, evidenzia conflitti, sintetizza il lavoro e consegna un risultato operativo. Non fingere azioni non eseguite.'},
-  Lumen:{provider:'perplexity',model:'sonar-deep-research',system:'Sei Lumen, ricercatore di The Office. Cerca evidenze aggiornate, distingui fatti da inferenze e conserva le fonti.'},
+  Direttore:{provider:'openai',model:'gpt-5.6-sol',system:'Sei il Direttore di The Office. Coordina specialisti, evidenzia conflitti, sintetizza il lavoro e consegna un risultato operativo. Non fingere azioni non eseguite.'},
+  Lumen:{provider:'perplexity',model:'high',system:'Sei Lumen, ricercatore di The Office. Cerca evidenze aggiornate, distingui fatti da inferenze e conserva le fonti.'},
   Coda:{provider:'anthropic',model:'claude-opus-5',system:'Sei Coda, builder di The Office. Produci implementazioni concrete, robuste e verificabili. Esplicita assunzioni e test.'},
   Mosaic:{provider:'google',model:'gemini-3.8-flash',system:'Sei Mosaic, specialista multimodale di The Office. Analizza materiali e contesto con precisione e segnala ciò che non è leggibile o disponibile.'},
   Sage:{provider:'anthropic',model:'claude-opus-5',system:'Sei Sage, stratega di The Office. Costruisci scenari, trade-off, rischi e raccomandazioni motivate.'},
   Aegis:{provider:'openai',model:'gpt-5.6-sol',system:'Sei Aegis, reviewer di sicurezza di The Office. Cerca rischi, privacy, permessi, frodi, effetti irreversibili e assunzioni pericolose.'},
   Verity:{provider:'xai',model:'grok-4.6',system:'Sei Verity, devil advocate indipendente di The Office. Prova a confutare il lavoro, cerca errori e alternative migliori. Non dissentire per sport: sii specifico.'},
-  Ledger:{provider:'openai',model:'gpt-6-astra',system:'Sei Ledger, analista numerico e finanziario di The Office. Controlla formule, ipotesi, unità, scenari e sensibilità. Non inventare dati mancanti.'},
+  Ledger:{provider:'openai',model:'gpt-5.6-sol',system:'Sei Ledger, analista numerico e finanziario di The Office. Controlla formule, ipotesi, unità, scenari e sensibilità. Non inventare dati mancanti.'},
   Archivist:{provider:'openai',model:'gpt-5.6-terra',system:'Sei Archivist, memoria di The Office. Organizza contesto, decisioni, precedenti e lezioni; distingui ciò che è ricordato da ciò che è nuovo.'}
 };
 
@@ -59,10 +59,13 @@ async function callGoogle(model,system,prompt){
   const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents:[{role:'user',parts:[{text:prompt}]}]})});
   const data=await r.json();if(!r.ok)throw new Error(`Google ${r.status}: ${data?.error?.message||'request failed'}`);return outputText(data);
 }
-async function callPerplexity(model,system,prompt){
+async function callPerplexity(preset,system,prompt){
   const key=process.env.PERPLEXITY_API_KEY;if(!key)throw new Error('PERPLEXITY_API_KEY missing');
-  const r=await fetch('https://api.perplexity.ai/v1/sonar',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model,messages:[{role:'system',content:system},{role:'user',content:prompt}]})});
-  const data=await r.json();if(!r.ok)throw new Error(`Perplexity ${r.status}: ${data?.error?.message||'request failed'}`);return outputText(data);
+  const r=await fetch('https://api.perplexity.ai/v1/agent',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({preset,instructions:system,input:prompt})});
+  const data=await r.json();
+  if(!r.ok)throw new Error(`Perplexity ${r.status}: ${data?.error?.message||'request failed'}`);
+  if(['failed','cancelled'].includes(data?.status))throw new Error(`Perplexity ${data.status}: ${data?.error?.message||'agent run failed'}`);
+  return outputText(data);
 }
 async function callXAI(model,system,prompt){
   const key=process.env.XAI_API_KEY;if(!key)throw new Error('XAI_API_KEY missing');
@@ -79,12 +82,12 @@ async function execute(job){
   const text=String(job.text||'').trim();if(!text)throw new Error('Missing job text');
   const requested=Array.isArray(job.team)?job.team.filter(x=>AGENTS[x]):[];
   const team=[...new Set(requested.length?requested:[job.owner&&AGENTS[job.owner]?job.owner:'Direttore'])].slice(0,5);
-  if(team.length===1)return{result:(await runAgent(team[0],text)).text,contributions:[await runAgent(team[0],text)]};
+  if(team.length===1){const one=await runAgent(team[0],text);return{result:one.text,contributions:[one],failures:[]}}
   const specialists=team.filter(x=>x!=='Direttore');
   const settled=await Promise.allSettled(specialists.map(name=>runAgent(name,text)));
-  const contributions=settled.filter(x=>x.status==='fulfilled').map(x=>x.value);
-  const failures=settled.filter(x=>x.status==='rejected').map((x,i)=>({agent:specialists[i],error:String(x.reason?.message||x.reason)}));
-  if(!contributions.length&&team.includes('Direttore')){const solo=await runAgent('Direttore',text);return{result:solo.text,contributions:[solo],failures}}
+  const contributions=[];const failures=[];
+  settled.forEach((item,i)=>{if(item.status==='fulfilled')contributions.push(item.value);else failures.push({agent:specialists[i],error:String(item.reason?.message||item.reason)})});
+  if(!contributions.length){const solo=await runAgent('Direttore',text);return{result:solo.text,contributions:[solo],failures}}
   const packet=contributions.map(c=>`### ${c.agent} (${c.provider}/${c.model})\n${c.text}`).join('\n\n');
   const directorPrompt=`INCARICO ORIGINALE:\n${text}\n\nCONTRIBUTI DEL TEAM:\n${packet}\n\nSintetizza. Evidenzia conflitti, punti incerti, cosa è verificato e il risultato finale. Non fingere azioni esterne.`;
   const director=await runAgent('Direttore',directorPrompt);
