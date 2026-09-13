@@ -1,14 +1,16 @@
 # Free 7 — source basis
 
-Verified 13 September 2026 against OpenRouter's live Free Models collection and pricing pages.
+Verified 13 September 2026 against the current BlockRun and Vireonix public documentation.
 
-Operational selection:
-- NVIDIA Nemotron 3 Ultra (free)
-- Poolside Laguna S 2.1 (free)
-- NVIDIA Nemotron 3 Super (free)
-- inclusionAI Ling 3.0 Flash VL (free)
-- inclusionAI Ling 3.0 Flash Fin (free)
-- Google Gemma 4 26B A4B IT (free)
-- OpenAI gpt-oss-20b (free)
+Operational zero-account / zero-key pool used by The Office:
+- BlockRun — NVIDIA Nemotron 3.5 Lightning
+- BlockRun — NVIDIA Nemotron 3 Ultra 550B
+- BlockRun — NVIDIA Nemotron 3 Nano Omni 30B A3B Reasoning
+- BlockRun — NVIDIA Llama 3.2 11B Vision
+- BlockRun — Cohere North Mini Code
+- BlockRun — Poolside Laguna XS 2.1
+- Vireonix — `auto` free model pool
 
-The `openrouter/free` router is the final fallback and is itself priced at zero. Availability of individual free providers can change, therefore the server also enforces a hard `max_price` of zero rather than trusting names alone.
+The runtime rotates the six BlockRun models deterministically and falls back to Vireonix. Calls are made without an API key, wallet, paid model identifier, or payment path. Provider failures are sanitized before being returned to the browser so third-party promotional/error text is not exposed directly to the user.
+
+Availability is still best-effort because all seven engines use shared free capacity. The runtime therefore uses bounded retries and a hard request deadline rather than claiming an SLA.
