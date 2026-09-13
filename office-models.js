@@ -18,8 +18,10 @@ const PROFILES={
   Aegis:{provider:'OpenAI',model:'openai/gpt-5.6-sol',label:'GPT-5.6 Sol',backup:'Claude Opus 5',tier:'FRONTIER 7',reason:'review robusta, sicurezza e controllo dei rischi'},
   Verity:{provider:'xAI',model:'x-ai/grok-4.6',label:'Grok 4.6',backup:'GLM-5.3',tier:'FRONTIER 7',reason:'seconda opinione indipendente e agentic reasoning da provider diverso'},
   Ledger:{provider:'Z.ai',model:'z-ai/glm-5.3',label:'GLM-5.3',backup:'GPT-6 Astra',tier:'FRONTIER 7',reason:'analisi strutturata, calcoli, coding e long-horizon reasoning'},
-  Archivist:{provider:'Anthropic',model:'anthropic/claude-fable-5.1',label:'Claude Fable 5.1 + retrieval',backup:'GPT-6 Astra',tier:'FRONTIER 7',reason:'contesto lungo, memoria, documenti e continuità tra lavori'}
+  Archivist:{provider:'Anthropic',model:'anthropic/claude-fable-5.1',label:'Claude Fable 5.1 + retrieval',backup:'GPT-6 Astra',tier:'FRONTIER 7',reason:'contesto lungo, memoria, documenti e continuità tra lavori'},
+  Qualita:{provider:'Anthropic',model:'anthropic/claude-fable-5.1',label:'Claude Fable 5.1',backup:'Grok 4.6',tier:'FRONTIER 7',reason:'quality gate finale, controllo completezza, coerenza, evidenze e standard del deliverable'},
+  Executor:{provider:'OpenAI',model:'openai/gpt-6-astra',label:'GPT-6 Astra',backup:'Claude Fable 5.1',tier:'FRONTIER 7',reason:'esecuzione controllata di azioni e workflow dopo approval esplicita'}
 };
 function get(name){return PROFILES[name]||null}
-window.OfficeModelBoard={profiles:PROFILES,top7:TOP7,get,version:'2026-09-13.4',principle:'Ogni dipendente usa soltanto il pool Frontier 7 approvato; ruolo stabile, modello sostituibile dal Model Board.',verifiedAt:'2026-09-13',benchmarkBasis:'Artificial Analysis Intelligence Index v4.3 + role fit + provider diversity'};
+window.OfficeModelBoard={profiles:PROFILES,top7:TOP7,get,version:'2026-09-13.5',principle:'Ogni dipendente usa soltanto il pool Frontier 7 approvato; ruolo stabile, modello sostituibile dal Model Board.',verifiedAt:'2026-09-13',benchmarkBasis:'Artificial Analysis Intelligence Index v4.3 + role fit + provider diversity'};
 })();
