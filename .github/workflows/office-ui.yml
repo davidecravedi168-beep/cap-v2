@@ -37,31 +37,31 @@ jobs:
           node --check office-free-model-board.js
           node --check model-board-ui.js
           node --check office-runtime-free.js
-          node --check office-room.js
-      - name: Office contract
+          node --check office-simple.js
+      - name: Two-screen Office contract
         run: |
           python - <<'PY'
           from pathlib import Path
+          app=Path('app.js').read_text(encoding='utf-8')
           director=Path('director-name.js').read_text(encoding='utf-8')
-          room=Path('office-room.js').read_text(encoding='utf-8')
-          room_css=Path('office-room.css').read_text(encoding='utf-8')
+          simple=Path('office-simple.js').read_text(encoding='utf-8')
+          css=Path('office-simple.css').read_text(encoding='utf-8')
           runtime=Path('office-runtime-free.js').read_text(encoding='utf-8')
           board=Path('office-free-model-board.js').read_text(encoding='utf-8')
-          league=Path('weekly-league.js').read_text(encoding='utf-8')
           required=[
-            (director,['office-runtime-free.js?v=1.0','office-room.js?v=1.0']),
-            (room,['Il tuo ufficio AI','INCARICO ATTUALE','Dallo al Direttore','Lavorazione in corso','TheOfficeRoom']),
-            (room_css,['.office-room-v4','.or-desk.busy','.or-roundtable','.or-command']),
+            (app,['director-name.js?v=2.0']),
+            (director,['office-simple.js?v=2.0','office-runtime-free.js?v=1.0']),
+            (simple,['Cosa dobbiamo fare?','Ufficio','Dettagli','INCARICO ATTUALE','LAVAGNA DEL DIRETTORE','Sta partendo','Sta lavorando','Finito','Errore','TheOfficeSimple']),
+            (css,['body.simple-office-mode .app-shell','.so-room','.so-person.busy','.so-tabs','.so-tech-grid']),
             (runtime,['zeroCost:true','TheOfficeRuntime']),
-            (board,['FREE 7','NO KEY','zeroCost=true','noKey=true']),
-            (league,['Dipendente della settimana','quality:.45','quantity:.10'])
+            (board,['FREE 7','NO KEY','zeroCost=true','noKey=true'])
           ]
           missing=[]
           for text,need in required:
             missing += [x for x in need if x not in text]
           if missing:
-            raise SystemExit('Office contract missing: '+', '.join(missing))
-          print('Real-office UI + zero-cost runtime contract: OK')
+            raise SystemExit('Two-screen Office contract missing: '+', '.join(missing))
+          print('Two-screen simple Office + zero-cost runtime contract: OK')
           PY
       - name: Whitespace check
         run: git diff --check
