@@ -10,6 +10,7 @@ function loadEnhancements(){
  loadScript('officeFreeModelBoardLoader','office-free-model-board.js?v=1.0');
  loadScript('officeModelUILoader','model-board-ui.js?v=1.0');
  loadScript('officeRuntimeLoader','office-runtime-free.js?v=1.0');
+ setTimeout(()=>loadScript('officeRoomLoader','office-room.js?v=1.0'),180);
 }
 function mount(){replaceText();patchLeague();loadEnhancements();const observer=new MutationObserver(mutations=>{mutations.forEach(mutation=>mutation.addedNodes.forEach(node=>{if(node.nodeType===Node.TEXT_NODE){if(node.nodeValue?.includes(FROM))node.nodeValue=node.nodeValue.replaceAll(FROM,TO)}else if(node.nodeType===Node.ELEMENT_NODE)replaceText(node)}));patchLeague()});observer.observe(document.body,{childList:true,subtree:true})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
