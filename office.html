@@ -1,15 +1,22 @@
 <!doctype html>
 <html lang="it">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The Office</title>
-<link rel="stylesheet" href="office-simple.css?v=20260913b">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#102b2a">
+  <meta name="description" content="The Office: il tuo ufficio AI, con lavori, risultati completi, memoria selettiva e decisioni sotto il tuo controllo.">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.compute.c-5.us-east-2.aws.neon.tech; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>The Office — Il tuo ufficio AI</title>
+  <link rel="icon" href="./src/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./src/office.css">
+  <script type="module" src="./src/app.mjs"></script>
 </head>
 <body>
-<script src="office-models.js?v=20260913b"></script>
-<script src="office-free-model-board.js?v=20260913b"></script>
-<script src="office-runtime-free.js?v=20260913b"></script>
-<script src="office-simple.js?v=20260913b"></script>
+  <a class="skip" href="#brief">Vai al nuovo incarico</a>
+  <div id="app"><main class="loading"><span class="brand-mark">✦</span><h1>The Office</h1><p>Apertura dell’ufficio…</p></main></div>
+  <noscript>Attiva JavaScript per aprire The Office. Gli incarichi sono conservati nel browser del tuo dispositivo.</noscript>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="agent-dialog" aria-labelledby="agent-title"></dialog>
 </body>
 </html>

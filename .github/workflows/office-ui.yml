@@ -1,67 +1,21 @@
-name: Validate The Office UI
-
+name: Validate The Office
 on:
   push:
-    branches: ["main"]
-    paths:
-      - "*.js"
-      - "*.css"
-      - "*.md"
-      - "server/**"
-      - ".github/workflows/office-ui.yml"
+    branches: [main]
   pull_request:
-    branches: ["main"]
+    branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
-  validate-ui:
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - name: JavaScript syntax
-        run: |
-          node --check app.js
-          node --check universal-office.js
-          node --check weekly-league.js
-          node --check director-name.js
-          node --check interactive-office.js
-          node --check office-extra-roles.js
-          node --check office-models.js
-          node --check office-free-model-board.js
-          node --check model-board-ui.js
-          node --check office-runtime-free.js
-          node --check office-simple.js
-      - name: Two-screen Office contract
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          app=Path('app.js').read_text(encoding='utf-8')
-          director=Path('director-name.js').read_text(encoding='utf-8')
-          simple=Path('office-simple.js').read_text(encoding='utf-8')
-          css=Path('office-simple.css').read_text(encoding='utf-8')
-          runtime=Path('office-runtime-free.js').read_text(encoding='utf-8')
-          board=Path('office-free-model-board.js').read_text(encoding='utf-8')
-          required=[
-            (app,['director-name.js?v=2.0']),
-            (director,['office-simple.js?v=2.0','office-runtime-free.js?v=1.0']),
-            (simple,['Cosa dobbiamo fare?','Ufficio','Dettagli','INCARICO ATTUALE','LAVAGNA DEL DIRETTORE','Sta partendo','Sta lavorando','Finito','Errore','TheOfficeSimple']),
-            (css,['body.simple-office-mode .app-shell','.so-room','.so-person.busy','.so-tabs','.so-tech-grid']),
-            (runtime,['zeroCost:true','TheOfficeRuntime']),
-            (board,['FREE 7','NO KEY','zeroCost=true','noKey=true'])
-          ]
-          missing=[]
-          for text,need in required:
-            missing += [x for x in need if x not in text]
-          if missing:
-            raise SystemExit('Two-screen Office contract missing: '+', '.join(missing))
-          print('Two-screen simple Office + zero-cost runtime contract: OK')
-          PY
-      - name: Whitespace check
-        run: git diff --check
+          node-version: 24
+      - run: npm run check
+      - run: npm test
+      - run: npm run build

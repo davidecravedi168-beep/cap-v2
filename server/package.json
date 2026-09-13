@@ -2,6 +2,14 @@
   "name": "the-office-ai-gateway",
   "private": true,
   "type": "module",
-  "engines": {"node": ">=22"},
-  "scripts": {"start": "node office-gateway.mjs", "check": "node --check office-gateway.mjs"}
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node office-gateway.mjs",
+    "check": "node --check office-gateway.mjs"
+  },
+  "dependencies": {
+    "pg": "8.16.3"
+  }
 }
