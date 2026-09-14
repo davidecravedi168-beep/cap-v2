@@ -2,6 +2,7 @@ import { LEGACY_API, detectSensitive, normaliseResponse } from './core.mjs';
 import { contextFor } from './context.mjs';
 import { roundtable } from './roundtable.mjs';
 import { ToolRuntime } from './tool-runtime.mjs';
+import { lightConversation } from './light-conversation.mjs';
 
 export class Runtime {
   constructor(workspace, { fetcher = (...args) => globalThis.fetch(...args), timeoutMs = 65000, locks = globalThis.navigator?.locks, tools = null } = {}) {
@@ -56,6 +57,21 @@ export class Runtime {
   }
   async execute(job) {
     const ws = this.workspace, mode = ws.state.settings.mode;
+
+    // V9.2: trivial greetings/check-ins are answered locally. No provider, reviewer, tool or network call is needed.
+    const light = lightConversation(job?.text);
+    if (light && !job?.materials?.length && !job?.previous) {
+      ws.event('local-conversation', job.id, light.intent);
+      ws.patch(job.id, {
+        status: 'completed', result: light.text, qualityReport: '', contributions: [], failures: [],
+        review: { independent: false, status: 'not-needed', local: true },
+        provenance: { mode: 'local', provider: 'LOCAL', model: 'DETERMINISTIC' },
+        externalActions: false, mode: 'local', completedAt: new Date().toISOString(), durationMs: 0,
+      });
+      this.lastInference = { ok: true, at: Date.now(), model: 'LOCAL · zero-token' };
+      return;
+    }
+
     let context;
     try { context = contextFor(job); } catch (e) { ws.patch(job.id, { status: 'blocked', error: e.message }); return; }
 
