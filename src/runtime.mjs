@@ -1,11 +1,13 @@
 import { LEGACY_API, detectSensitive, normaliseResponse } from './core.mjs';
 import { contextFor } from './context.mjs';
 import { roundtable } from './roundtable.mjs';
+import { ToolRuntime } from './tool-runtime.mjs';
 
 export class Runtime {
-  constructor(workspace, { fetcher = (...args) => globalThis.fetch(...args), timeoutMs = 65000, locks = globalThis.navigator?.locks } = {}) {
+  constructor(workspace, { fetcher = (...args) => globalThis.fetch(...args), timeoutMs = 65000, locks = globalThis.navigator?.locks, tools = null } = {}) {
     this.workspace = workspace; this.fetcher = fetcher; this.timeoutMs = timeoutMs;
     this.locks = locks; this.active = null; this.token = ''; this.health = null; this.checking = false;
+    this.tools = tools || new ToolRuntime({ fetcher });
   }
   configureToken(token) { this.token = String(token || '').trim(); }
   api() {
@@ -55,6 +57,23 @@ export class Runtime {
     const ws = this.workspace, mode = ws.state.settings.mode;
     let context;
     try { context = contextFor(job); } catch (e) { ws.patch(job.id, { status: 'blocked', error: e.message }); return; }
+
+    // V9: only software/repository tasks pay the async tool-preflight cost. This preserves immediate cancellation for ordinary jobs.
+    const wantsTools = /(github|repository|\brepo\b|codice|software|bug|implement|deploy|workflow)/i.test(`${job?.text || ''} ${job?.plan?.kind || ''}`);
+    if (wantsTools) {
+      try {
+        const toolContext = await this.tools?.contextFor?.(job);
+        if (toolContext) {
+          context = `${context}\n\n---\nDATI STRUMENTI\n${toolContext}`;
+          ws.event('tool-context', job.id, toolContext.startsWith('TOOL VERIFIED') ? 'GitHub API verificata' : 'Tool non disponibile');
+        }
+      } catch (e) {
+        ws.event('tool-context-failed', job.id, String(e?.message || e).slice(0, 180));
+      }
+      ws.refresh();
+      if (ws.state.jobs.find(j => j.id === job.id)?.status !== 'queued') return;
+    }
+
     if (mode === 'legacy' && (job.sensitivity === 'private' || detectSensitive(context))) {
       ws.patch(job.id, { status: 'blocked', error: 'Il motore pubblico è riservato a materiale pubblico. Questo incarico resta qui: per dati riservati collega il gateway personale protetto.' }); return;
     }
@@ -98,7 +117,7 @@ export class Runtime {
         ws.refresh();
         if (!controller.signal.aborted && ws.state.jobs.find(j => j.id === job.id)?.status === 'running') {
           ws.patch(job.id, { ...result, activeAgent: null, completedAt: new Date().toISOString(), durationMs: Date.now() - started });
-          ws.event('roundtable-delivered', job.id, `${result.contributions.length} chiamate documentate`);
+          ws.event(result.review?.autoCorrected ? 'roundtable-autocorrected' : 'roundtable-delivered', job.id, `${result.contributions.length} chiamate documentate`);
           this.lastInference = { ok: true, at: Date.now(), model: result.provenance.model };
         }
         return;
