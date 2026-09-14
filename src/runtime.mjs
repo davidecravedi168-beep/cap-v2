@@ -22,6 +22,7 @@ export class Runtime {
     this.checking = true; this.workspace.emit();
     const c = new AbortController(), timer = setTimeout(() => c.abort(), 12000);
     try {
+      this.tools?.assertExternalCall?.({ service: 'office-health', zeroCost: true, estimatedCredits: 0, metered: false });
       const response = await this.fetcher(`${this.api()}/health`, { signal: c.signal, cache: 'no-store', credentials: 'omit' });
       if (!response.ok) throw Error(`HTTP ${response.status}`);
       const data = await response.json();
@@ -58,7 +59,6 @@ export class Runtime {
     let context;
     try { context = contextFor(job); } catch (e) { ws.patch(job.id, { status: 'blocked', error: e.message }); return; }
 
-    // V9: only software/repository tasks pay the async tool-preflight cost. This preserves immediate cancellation for ordinary jobs.
     const wantsTools = /(github|repository|\brepo\b|codice|software|bug|implement|deploy|workflow)/i.test(`${job?.text || ''} ${job?.plan?.kind || ''}`);
     if (wantsTools) {
       try {
@@ -86,6 +86,15 @@ export class Runtime {
     if (mode === 'secure' && job.reviewMode === 'roundtable') {
       ws.patch(job.id, { status: 'blocked', error: 'Per il gateway personale seleziona Risposta rapida oppure Modelli distinti.' }); return;
     }
+
+    try {
+      this.tools?.assertExternalCall?.({ service: mode === 'legacy' ? 'office-public-gateway' : 'office-secure-gateway', zeroCost: true, estimatedCredits: 0, metered: false });
+    } catch (e) {
+      ws.event('cost-policy-deny', job.id, String(e?.message || e).slice(0, 180));
+      ws.patch(job.id, { status: 'blocked', error: `Cost Guard: ${String(e?.message || e).slice(0, 500)}` });
+      return;
+    }
+
     const controller = new AbortController();
     const active = { id: job.id, controller }; this.active = active;
     const started = Date.now();
@@ -100,6 +109,7 @@ export class Runtime {
           const stepController = new AbortController(), timeout = setTimeout(() => stepController.abort(), 30000);
           const cancelStep = () => stepController.abort(); controller.signal.addEventListener('abort', cancelStep, { once: true });
           try {
+            this.tools?.assertExternalCall?.({ service: 'office-public-gateway', zeroCost: true, estimatedCredits: 0, metered: false });
             const response = await this.fetcher(`${this.api()}/v1/jobs`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ id: `${job.id}-${agent}`, text: prompt, team: [agent], zeroCost: true, intent: 'draft-only' }),
               signal: stepController.signal, credentials: 'omit', cache: 'no-store' });
@@ -107,6 +117,7 @@ export class Runtime {
             const out = JSON.parse(body);
             if (!response.ok) throw Error(out.message || out.error || `HTTP ${response.status}`);
             const normalized = normaliseResponse(out, 'legacy');
+            this.tools?.assertExternalCall?.({ service: normalized.provenance.provider || 'provider-non-dichiarato', zeroCost: true, estimatedCredits: 0, metered: false });
             return { agent, text: normalized.result, model: normalized.provenance.model, provider: normalized.provenance.provider, durationMs: Date.now() - startedStep };
           } finally { clearTimeout(timeout); controller.signal.removeEventListener('abort', cancelStep); }
         }, { context, signal: controller.signal, checkpoint: async value => {
@@ -137,6 +148,7 @@ export class Runtime {
       ws.refresh();
       if (controller.signal.aborted || ws.state.jobs.find(j => j.id === job.id)?.status !== 'running') return;
       const result = normaliseResponse(out, mode);
+      this.tools?.assertExternalCall?.({ service: result.provenance.provider || 'provider-non-dichiarato', zeroCost: true, estimatedCredits: 0, metered: false });
       this.lastInference = { ok: true, at: Date.now(), model: result.provenance.model };
       ws.event('response-received', job.id, result.status);
       ws.patch(job.id, { ...result, completedAt: new Date().toISOString(), durationMs: Date.now() - started });
@@ -144,10 +156,11 @@ export class Runtime {
       this.lastInference = { ok: false, at: Date.now() };
       ws.refresh();
       if (ws.state.jobs.find(j => j.id === job.id)?.status === 'running') {
-        const timedOut = controller.signal.aborted;
-        ws.event(timedOut ? 'request-timeout' : 'request-failed', job.id);
-        ws.patch(job.id, { status: timedOut ? 'interrupted' : 'failed', durationMs: Date.now() - started,
-          error: timedOut ? 'Tempo di attesa terminato. Il server potrebbe aver continuato: nessun nuovo tentativo parte automaticamente.' : String(e.message || e).slice(0, 600) });
+        const costDenied = e?.code === 'COST_POLICY_DENY';
+        const timedOut = !costDenied && controller.signal.aborted;
+        ws.event(costDenied ? 'cost-policy-deny' : timedOut ? 'request-timeout' : 'request-failed', job.id);
+        ws.patch(job.id, { status: costDenied ? 'blocked' : timedOut ? 'interrupted' : 'failed', durationMs: Date.now() - started,
+          error: costDenied ? `Cost Guard: ${String(e.message || e).slice(0, 500)}` : timedOut ? 'Tempo di attesa terminato. Il server potrebbe aver continuato: nessun nuovo tentativo parte automaticamente.' : String(e.message || e).slice(0, 600) });
       }
     } finally { clearTimeout(timer); if (this.active === active) this.active = null; ws.emit(); }
   }
