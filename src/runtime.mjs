@@ -58,15 +58,20 @@ export class Runtime {
     let context;
     try { context = contextFor(job); } catch (e) { ws.patch(job.id, { status: 'blocked', error: e.message }); return; }
 
-    // V9: public read-only tools may enrich software/repository tasks. Tool failures are explicit and never masquerade as verified facts.
-    try {
-      const toolContext = await this.tools?.contextFor?.(job);
-      if (toolContext) {
-        context = `${context}\n\n---\nDATI STRUMENTI\n${toolContext}`;
-        ws.event('tool-context', job.id, toolContext.startsWith('TOOL VERIFIED') ? 'GitHub API verificata' : 'Tool non disponibile');
+    // V9: only software/repository tasks pay the async tool-preflight cost. This preserves immediate cancellation for ordinary jobs.
+    const wantsTools = /(github|repository|\brepo\b|codice|software|bug|implement|deploy|workflow)/i.test(`${job?.text || ''} ${job?.plan?.kind || ''}`);
+    if (wantsTools) {
+      try {
+        const toolContext = await this.tools?.contextFor?.(job);
+        if (toolContext) {
+          context = `${context}\n\n---\nDATI STRUMENTI\n${toolContext}`;
+          ws.event('tool-context', job.id, toolContext.startsWith('TOOL VERIFIED') ? 'GitHub API verificata' : 'Tool non disponibile');
+        }
+      } catch (e) {
+        ws.event('tool-context-failed', job.id, String(e?.message || e).slice(0, 180));
       }
-    } catch (e) {
-      ws.event('tool-context-failed', job.id, String(e?.message || e).slice(0, 180));
+      ws.refresh();
+      if (ws.state.jobs.find(j => j.id === job.id)?.status !== 'queued') return;
     }
 
     if (mode === 'legacy' && (job.sensitivity === 'private' || detectSensitive(context))) {
