@@ -1,10 +1,11 @@
 const ORIGIN = 'https://davidecravedi168-beep.github.io';
 const VIREONIX_URL = 'https://vireonix.ai/v1/chat/completions';
 
-const HARD_DEADLINE_MS = 52000;
-const ATTEMPT_MS = 26000;
-const FIRST_MAX_TOKENS = 2400;
-const CONTINUATION_MAX_TOKENS = 1400;
+// Keep the public gateway below the browser's 30s public-request ceiling.
+const HARD_DEADLINE_MS = 27500;
+const ATTEMPT_MS = 16000;
+const FIRST_MAX_TOKENS = 1800;
+const CONTINUATION_MAX_TOKENS = 900;
 export const MODEL_BOARD_VERSION = '2026-09-15-v5';
 
 const V = () => ({ provider: 'Vireonix', url: VIREONIX_URL, model: 'auto', targetMs: ATTEMPT_MS });
@@ -133,7 +134,35 @@ async function callAttempt(a, system, user, ms, { previous = '', continuation = 
 }
 
 function systemPrompt(agent) {
-  return `Sei ${agent} di The Office. ${ROLE_RULES[agent] || ROLE_RULES.Direttore}\nRegole invariabili:\n- costo richiesto: zero;\n- non fingere browsing, strumenti, accessi, memoria, file o azioni esterne;\n- separa fatti, ipotesi e dati mancanti quando serve;\n- se il compito richiede una capacità non realmente disponibile, dichiaralo;\n- porta a termine la richiesta: non fermarti a un piano se l'utente chiede un risultato;\n- rispondi in italiano salvo richiesta diversa.`;
+  return `Sei ${agent} di The Office. ${ROLE_RULES[agent] || ROLE_RULES.Direttore}\nRegole invariabili:\n- costo richiesto: zero;\n- non fingere browsing, strumenti, accessi, memoria, file o azioni esterne;\n- separa fatti, ipotesi e dati mancanti quando serve;\n- se il compito richiede una capacità non realmente disponibile, dichiaralo;\n- porta a termine la richiesta: non fermarti a un piano se l'utente chiede un risultato;\n- privilegia una risposta completa e compatta rispetto a una risposta lunga ma interrotta;\n- rispondi in italiano salvo richiesta diversa.`;
+}
+
+async function continueIfNeeded(attempt, agent, user, first, failures, deadline) {
+  if (!first.truncated) return { ...first, agent, failures, continued: false };
+  const remaining = deadline - Date.now() - 350;
+  if (remaining < 2200) {
+    failures.push({ provider: attempt.provider, model: attempt.model, error: `${attempt.provider}: output troncato, finestra di continuazione esaurita` });
+    return { ...first, agent, failures, continued: false };
+  }
+  try {
+    const second = await callAttempt(
+      attempt,
+      systemPrompt(agent),
+      user,
+      Math.max(2200, Math.min(remaining, 9500)),
+      { previous: first.text, continuation: true },
+    );
+    return {
+      ...second,
+      text: joinContinuation(first.text, second.text),
+      agent,
+      failures,
+      continued: true,
+    };
+  } catch (error) {
+    failures.push({ provider: attempt.provider, model: attempt.model, error: `${attempt.provider}: continuazione non riuscita (${safeReason(attempt.provider, error)})` });
+    return { ...first, agent, failures, continued: false };
+  }
 }
 
 async function resilient(agent, user) {
@@ -142,38 +171,21 @@ async function resilient(agent, user) {
   for (const attempt of routeForAgent(agent).route) {
     const remaining = deadline - Date.now() - 350;
     if (remaining < 2200) break;
-    const timeout = Math.max(2200, Math.min(attempt.targetMs || ATTEMPT_MS, remaining));
     try {
-      const first = await callAttempt(attempt, systemPrompt(agent), user, timeout);
-      if (!first.truncated) return { ...first, agent, failures, continued: false };
-
-      const remainingForContinuation = deadline - Date.now() - 350;
-      if (remainingForContinuation < 2200) {
-        failures.push({ provider: attempt.provider, model: attempt.model, error: `${attempt.provider}: output troncato, tempo di continuazione esaurito` });
-        return { ...first, agent, failures, continued: false };
-      }
-
-      try {
-        const second = await callAttempt(
-          attempt,
-          systemPrompt(agent),
-          user,
-          Math.max(2200, Math.min(ATTEMPT_MS, remainingForContinuation)),
-          { previous: first.text, continuation: true },
-        );
-        return {
-          ...second,
-          text: joinContinuation(first.text, second.text),
-          agent,
-          failures,
-          continued: true,
-        };
-      } catch (error) {
-        failures.push({ provider: attempt.provider, model: attempt.model, error: `${attempt.provider}: continuazione non riuscita (${safeReason(attempt.provider, error)})` });
-        return { ...first, agent, failures, continued: false };
-      }
+      const first = await callAttempt(attempt, systemPrompt(agent), user, Math.max(2200, Math.min(attempt.targetMs || ATTEMPT_MS, remaining)));
+      return await continueIfNeeded(attempt, agent, user, first, failures, deadline);
     } catch (error) {
       failures.push({ provider: attempt.provider, model: attempt.model, error: safeReason(attempt.provider, error) });
+      // V10.0.5: one bounded retry on the same zero-cost provider when time remains.
+      const retryRemaining = deadline - Date.now() - 350;
+      if (retryRemaining >= 2200) {
+        try {
+          const retry = await callAttempt(attempt, `${systemPrompt(agent)}\nIl tentativo precedente non è arrivato a una risposta valida. Questa volta rispondi in modo più compatto e porta a termine il compito.`, user, Math.max(2200, Math.min(retryRemaining, 9500)));
+          return await continueIfNeeded(attempt, agent, user, retry, failures, deadline);
+        } catch (retryError) {
+          failures.push({ provider: attempt.provider, model: attempt.model, error: `retry: ${safeReason(attempt.provider, retryError)}` });
+        }
+      }
     }
   }
   const error = new Error('free-engines-unavailable');
@@ -202,7 +214,7 @@ async function execute(job) {
     routedAgent: agent,
     preferred: { provider: preferred.provider, model: preferred.model },
     completion: { continued: !!result.continued, truncated: !!result.truncated, finishReason: result.finishReason || null },
-    qualityReport: `${agent} ha lavorato tramite ${result.provider} (${result.model}). Routing Model Board ${MODEL_BOARD_VERSION}. Modalità zero-euro.${result.continued ? ' Output continuato automaticamente dopo il limite del provider.' : ''}${result.truncated ? ' Il provider non ha concluso anche dopo il tentativo disponibile: risultato marcato parziale.' : ''} Nessuna azione esterna eseguita.`,
+    qualityReport: `${agent} ha lavorato tramite ${result.provider} (${result.model}). Routing Model Board ${MODEL_BOARD_VERSION}. Modalità zero-euro.${result.continued ? ' Output continuato automaticamente dopo il limite del provider.' : ''}${result.truncated ? ' Il provider non ha concluso anche dopo la finestra disponibile: risultato marcato parziale.' : ''}${result.failures?.length ? ` Recuperi registrati: ${result.failures.length}.` : ''} Nessuna azione esterna eseguita.`,
     contributions: [{ agent, provider: result.provider, model: result.model, text: result.text }],
     failures: result.failures || [],
   };
@@ -234,6 +246,7 @@ export default {
         strategy: 'role-aware-zero-cost-routing-v5-completion-aware',
         hardDeadlineSeconds: HARD_DEADLINE_MS / 1000,
         completionAware: true,
+        retryPolicy: 'one-bounded-zero-cost-retry',
       }, 200, headers);
     }
     if (req.method === 'POST' && url.pathname === '/v1/jobs') {
