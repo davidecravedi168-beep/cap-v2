@@ -26,14 +26,8 @@ function resultMarkup(summary) {
   <details><summary>Perché questo primo laboratorio è prudente</summary><p>Il sandbox locale verifica il motore multi-run, la convergenza e la UI senza inventare accesso a dati o modelli che non sono stati collegati. Il passo successivo è sostituire il runner sintetico con agenti AI e fonti tracciate.</p></details>`;
 }
 
-function mount() {
-  if (document.querySelector('#simulation-lab')) return true;
-  const grid = document.querySelector('#screen-details .details-grid');
-  if (!grid) return false;
-  const section = document.createElement('section');
-  section.id = 'simulation-lab';
-  section.className = 'detail-card wide simulation-lab';
-  section.innerHTML = `<span class="eyebrow">SIMULATION LAB · V10.1</span>
+function labMarkup() {
+  return `<span class="eyebrow">SIMULATION LAB · V10.1</span>
     <div class="simulation-head"><div><h2>Stressa una decisione prima di crederci.</h2><p class="muted">Multi-run, prospettive diverse e convergenza misurata. Questo primo layer gira in locale ed è deliberatamente separato dalle evidenze reali.</p></div><span class="simulation-badge">SANDBOX LOCALE</span></div>
     <form id="simulation-form" class="simulation-form">
       <label>Scenario<textarea id="simulation-question" rows="3" maxlength="4000" required placeholder="Es. Se lanciamo questa funzione a questo prezzo, quali reazioni e rischi emergono?"></textarea></label>
@@ -41,8 +35,9 @@ function mount() {
       <div class="button-row"><button class="secondary" type="button" id="simulation-use-brief">Usa il brief corrente</button><button class="secondary" type="submit">Avvia stress test →</button></div>
     </form>
     <div id="simulation-result" class="simulation-result"><p class="muted">Nessuna simulazione eseguita su questo dispositivo.</p></div>`;
-  grid.prepend(section);
+}
 
+function bind(section) {
   const form = section.querySelector('#simulation-form');
   const question = section.querySelector('#simulation-question');
   const output = section.querySelector('#simulation-result');
@@ -65,6 +60,19 @@ function mount() {
       output.innerHTML = `<p class="simulation-warning">${esc(error.message || 'Simulazione non disponibile.')}</p>`;
     }
   });
+}
+
+function mount() {
+  if (document.querySelector('#simulation-lab')) return true;
+  const office = document.querySelector('#screen-office');
+  const anchor = office?.querySelector('.mission-control');
+  if (!office || !anchor) return false;
+  const section = document.createElement('section');
+  section.id = 'simulation-lab';
+  section.className = 'simulation-lab office-simulation';
+  section.innerHTML = labMarkup();
+  anchor.insertAdjacentElement('afterend', section);
+  bind(section);
   return true;
 }
 
