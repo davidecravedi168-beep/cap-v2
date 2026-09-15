@@ -72,6 +72,12 @@ function safeReason(provider, error) {
   return `${provider}: non disponibile`;
 }
 
+function shouldRetryProviderFailure(error) {
+  const m = String(error?.message || error || '').toLowerCase();
+  if (/budget|credit|billing|payment required|\b402\b|\b401\b|\b403\b|auth|quota/.test(m)) return false;
+  return /timeout|abort|capacity|exhausted|overloaded|\b503\b|\b429\b|rate limit|temporar|empty|network|fetch/.test(m);
+}
+
 async function postJson(url, body, ms) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -176,9 +182,9 @@ async function resilient(agent, user) {
       return await continueIfNeeded(attempt, agent, user, first, failures, deadline);
     } catch (error) {
       failures.push({ provider: attempt.provider, model: attempt.model, error: safeReason(attempt.provider, error) });
-      // V10.0.5: one bounded retry on the same zero-cost provider when time remains.
+      // Retry only genuinely transient failures. Budget/auth/quota failures are fail-fast.
       const retryRemaining = deadline - Date.now() - 350;
-      if (retryRemaining >= 2200) {
+      if (retryRemaining >= 2200 && shouldRetryProviderFailure(error)) {
         try {
           const retry = await callAttempt(attempt, `${systemPrompt(agent)}\nIl tentativo precedente non è arrivato a una risposta valida. Questa volta rispondi in modo più compatto e porta a termine il compito.`, user, Math.max(2200, Math.min(retryRemaining, 9500)));
           return await continueIfNeeded(attempt, agent, user, retry, failures, deadline);
@@ -246,7 +252,7 @@ export default {
         strategy: 'role-aware-zero-cost-routing-v5-completion-aware',
         hardDeadlineSeconds: HARD_DEADLINE_MS / 1000,
         completionAware: true,
-        retryPolicy: 'one-bounded-zero-cost-retry',
+        retryPolicy: 'one-bounded-transient-zero-cost-retry',
       }, 200, headers);
     }
     if (req.method === 'POST' && url.pathname === '/v1/jobs') {
