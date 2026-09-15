@@ -3,6 +3,22 @@ import { contextFor } from './context.mjs';
 import { roundtable } from './roundtable.mjs';
 import { ToolRuntime } from './tool-runtime.mjs';
 import { lightConversation } from './light-conversation.mjs';
+import { decisionInstruction, hasDecisionStructure, resolveDecisionMode } from './decision-mode.mjs';
+
+function applyDecisionContract(result, route) {
+  if (!route?.requested) return result;
+  const structured = hasDecisionStructure(result?.result);
+  const note = structured
+    ? `Decision Mode: contratto di uscita rispettato · ${route.executionMode}.`
+    : 'Decision Mode: il motore non ha rispettato tutte le sei sezioni richieste; risultato marcato parziale senza inventare contenuti mancanti.';
+  return {
+    ...result,
+    status: structured ? result.status : 'partial',
+    qualityReport: [result.qualityReport, note].filter(Boolean).join('\n'),
+    decisionRoute: route,
+    decisionContract: structured ? 'pass' : 'incomplete',
+  };
+}
 
 export class Runtime {
   constructor(workspace, { fetcher = (...args) => globalThis.fetch(...args), timeoutMs = 65000, locks = globalThis.navigator?.locks, tools = null } = {}) {
@@ -90,17 +106,25 @@ export class Runtime {
       if (ws.state.jobs.find(j => j.id === job.id)?.status !== 'queued') return;
     }
 
+    const decisionRoute = resolveDecisionMode(job, { engine: mode });
+    const executionMode = decisionRoute.executionMode;
+    if (decisionRoute.requested) {
+      context = `${context}\n\n---\n${decisionInstruction(decisionRoute)}`;
+      ws.event('decision-route', job.id, `${executionMode} · score ${decisionRoute.score}/10`);
+      ws.patch(job.id, { decisionRoute, resolvedReviewMode: executionMode });
+    }
+
     if (mode === 'legacy' && (job.sensitivity === 'private' || detectSensitive(context))) {
       ws.patch(job.id, { status: 'blocked', error: 'Il motore pubblico è riservato a materiale pubblico. Questo incarico resta qui: per dati riservati collega il gateway personale protetto.' }); return;
     }
     if (mode === 'secure' && !this.token) {
       ws.patch(job.id, { status: 'blocked', error: 'Collega la sessione personale nei Dettagli prima di usare il gateway protetto.' }); return;
     }
-    if (mode === 'legacy' && job.reviewMode === 'independent') {
-      ws.patch(job.id, { status: 'blocked', error: 'Questo motore usa una chiamata singola. La revisione tra modelli distinti richiede il gateway protetto.' }); return;
+    if (mode === 'legacy' && executionMode === 'independent') {
+      ws.patch(job.id, { status: 'blocked', error: 'Questo motore pubblico non può garantire una revisione con modello distinto. Usa Decision Mode pubblico oppure collega il gateway personale.' }); return;
     }
-    if (mode === 'secure' && job.reviewMode === 'roundtable') {
-      ws.patch(job.id, { status: 'blocked', error: 'Per il gateway personale seleziona Risposta rapida oppure Modelli distinti.' }); return;
+    if (mode === 'secure' && executionMode === 'roundtable') {
+      ws.patch(job.id, { status: 'blocked', error: 'Il gateway personale usa risposta rapida o revisione distinta; la Tavola Rotonda pubblica non viene instradata sul gateway protetto.' }); return;
     }
 
     try {
@@ -114,13 +138,13 @@ export class Runtime {
     const controller = new AbortController();
     const active = { id: job.id, controller }; this.active = active;
     const started = Date.now();
-    ws.event('request-started', job.id, mode);
+    ws.event('request-started', job.id, `${mode}/${executionMode}`);
     ws.patch(job.id, { status: 'running', mode, startedAt: new Date(started).toISOString(), error: '' });
-    const timer = setTimeout(() => controller.abort(), job.reviewMode === 'roundtable' ? Math.max(this.timeoutMs, 135000) : mode === 'legacy' ? Math.min(this.timeoutMs, 30000) : this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), executionMode === 'roundtable' ? Math.max(this.timeoutMs, 135000) : mode === 'legacy' ? Math.min(this.timeoutMs, 30000) : this.timeoutMs);
     try {
       const memory = mode === 'secure' ? ws.state.memory.filter(m => m.enabled && job.memoryIds?.includes(m.id)).map(m => ({ text: m.text, id: m.id })) : [];
-      if (job.reviewMode === 'roundtable') {
-        const result = await roundtable(job, async (agent, prompt) => {
+      if (executionMode === 'roundtable') {
+        let result = await roundtable(job, async (agent, prompt) => {
           const startedStep = Date.now();
           const stepController = new AbortController(), timeout = setTimeout(() => stepController.abort(), 30000);
           const cancelStep = () => stepController.abort(); controller.signal.addEventListener('abort', cancelStep, { once: true });
@@ -136,11 +160,12 @@ export class Runtime {
             this.tools?.assertExternalCall?.({ service: normalized.provenance.provider || 'provider-non-dichiarato', zeroCost: true, estimatedCredits: 0, metered: false });
             return { agent, text: normalized.result, model: normalized.provenance.model, provider: normalized.provenance.provider, durationMs: Date.now() - startedStep };
           } finally { clearTimeout(timeout); controller.signal.removeEventListener('abort', cancelStep); }
-        }, { context, signal: controller.signal, checkpoint: async value => {
+        }, { context, signal: controller.signal, history: ws.state.jobs.filter(j => j.id !== job.id), checkpoint: async value => {
           ws.refresh();
           if (controller.signal.aborted || ws.state.jobs.find(j => j.id === job.id)?.status !== 'running') return;
           ws.patch(job.id, { checkpoint: value, contributions: value.contributions, activeAgent: value.agent, stage: value.stage });
         } });
+        result = applyDecisionContract(result, decisionRoute);
         ws.refresh();
         if (!controller.signal.aborted && ws.state.jobs.find(j => j.id === job.id)?.status === 'running') {
           ws.patch(job.id, { ...result, activeAgent: null, completedAt: new Date().toISOString(), durationMs: Date.now() - started });
@@ -149,7 +174,7 @@ export class Runtime {
         }
         return;
       }
-      const payload = { id: job.id, text: context, team: job.plan.team, mode: job.reviewMode || 'fast', memory,
+      const payload = { id: job.id, text: context, team: job.plan.team, mode: executionMode || 'fast', memory,
         intent: 'draft-only', zeroCost: true, schemaVersion: 3 };
       const headers = { 'Content-Type': 'application/json' };
       if (mode === 'secure') { headers.Authorization = `Bearer ${this.token}`; headers['Idempotency-Key'] = job.id; }
@@ -163,7 +188,8 @@ export class Runtime {
       if (!response.ok) throw Error(out.message || out.error || `Il motore risponde HTTP ${response.status}.`);
       ws.refresh();
       if (controller.signal.aborted || ws.state.jobs.find(j => j.id === job.id)?.status !== 'running') return;
-      const result = normaliseResponse(out, mode);
+      let result = normaliseResponse(out, mode);
+      result = applyDecisionContract(result, decisionRoute);
       this.tools?.assertExternalCall?.({ service: result.provenance.provider || 'provider-non-dichiarato', zeroCost: true, estimatedCredits: 0, metered: false });
       this.lastInference = { ok: true, at: Date.now(), model: result.provenance.model };
       ws.event('response-received', job.id, result.status);

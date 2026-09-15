@@ -119,7 +119,7 @@ export class Workspace {
       status: options.draft ? 'draft' : 'queued', priority: options.priority === 'high' ? 'high' : 'normal',
       result: '', contributions: [], error: '', attempt: 1, rating: null, memoryIds: [],
       materials: options.materials || [], previous: options.previous || null, parentId: options.parentId,
-      reviewMode: ['fast', 'roundtable', 'independent'].includes(options.reviewMode) ? options.reviewMode : 'fast' };
+      reviewMode: ['decision', 'fast', 'roundtable', 'independent'].includes(options.reviewMode) ? options.reviewMode : 'fast' };
     this.state.jobs.unshift(job); this.event('created', job.id); this.save(); return job;
   }
   patch(id, patch) {
@@ -144,7 +144,8 @@ export class Workspace {
     const old = this.state.jobs.find(j => j.id === id);
     if (!old || ['queued', 'running'].includes(old.status)) return null;
     const next = this.add(old.text, { ...old, draft: false });
-    return this.patch(next.id, { parentId: old.id, attempt: (old.attempt || 1) + 1, reviewMode: old.reviewMode || 'fast', memoryIds: [...(old.memoryIds || [])], checkpoint: old.reviewMode === 'roundtable' && ['interrupted', 'failed', 'cancelled'].includes(old.status) ? old.checkpoint : null });
+    const usedRoundtable = old.reviewMode === 'roundtable' || old.reviewMode === 'decision' && old.resolvedReviewMode === 'roundtable';
+    return this.patch(next.id, { parentId: old.id, attempt: (old.attempt || 1) + 1, reviewMode: old.reviewMode || 'fast', memoryIds: [...(old.memoryIds || [])], checkpoint: usedRoundtable && ['interrupted', 'failed', 'cancelled'].includes(old.status) ? old.checkpoint : null });
   }
   followUp(id, instruction) {
     const old = this.state.jobs.find(j => j.id === id);
@@ -191,5 +192,6 @@ export function normaliseResponse(out, mode) {
 
 export function toMarkdown(job) {
   const actual = job.contributions?.map(c => `${c.agent}: ${c.provider || 'Non dichiarato'} / ${c.model || 'Non dichiarato'}`).join('\n') || 'Non dichiarati';
-  return `# ${job.text}\n\nStato: ${STATUS[job.status] || job.status}\nData: ${job.createdAt}\n\n## Risultato\n\n${job.result || job.error || 'Nessun risultato'}\n\n## Revisione\n\n${job.review?.independent ? 'Modello distinto verificato dal gateway.' : 'Revisione indipendente non verificata.'}\n${job.qualityReport || ''}\n\n## Modelli dichiarati dal gateway\n\n${actual}\n\nNessuna azione esterna eseguita.\n`;
+  const route = job.decisionRoute?.requested ? `\nDecision Mode: ${job.decisionRoute.executionMode} · score ${job.decisionRoute.score}/10\n` : '';
+  return `# ${job.text}\n\nStato: ${STATUS[job.status] || job.status}\nData: ${job.createdAt}\n${route}\n## Risultato\n\n${job.result || job.error || 'Nessun risultato'}\n\n## Revisione\n\n${job.review?.independent ? 'Modello distinto verificato dal gateway.' : 'Revisione indipendente non verificata.'}\n${job.qualityReport || ''}\n\n## Modelli dichiarati dal gateway\n\n${actual}\n\nNessuna azione esterna eseguita.\n`;
 }
