@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Workspace, newWorkspace } from '../src/core.mjs';
 import { Runtime } from '../src/runtime.mjs';
-import { DEFAULT_CONSTITUTION, objectiveProgress } from '../src/objective-os.mjs';
+import { DEFAULT_CONSTITUTION, normaliseConstitution, objectiveProgress } from '../src/objective-os.mjs';
 import { validateArchive } from '../src/archive.mjs';
 
 const office = () => {
@@ -20,6 +20,24 @@ test('V10 workspace starts with Objective OS collections and a fail-closed const
   assert.equal(state.constitution.requireHumanApprovalForExternalActions, true);
   assert.equal(state.constitution.allowAutonomousPayments, false);
   assert.ok(state.constitution.rules.length >= DEFAULT_CONSTITUTION.rules.length);
+});
+
+test('Imported or manipulated state cannot weaken the office constitution', () => {
+  const c = normaliseConstitution({
+    zeroCostFirst: false,
+    requireHumanApprovalForExternalActions: false,
+    allowAutonomousDeletion: true,
+    allowAutonomousPayments: true,
+    allowAutonomousPublishing: true,
+    rules: ['Regola personalizzata innocua'],
+  });
+  assert.equal(c.zeroCostFirst, true);
+  assert.equal(c.requireHumanApprovalForExternalActions, true);
+  assert.equal(c.allowAutonomousDeletion, false);
+  assert.equal(c.allowAutonomousPayments, false);
+  assert.equal(c.allowAutonomousPublishing, false);
+  for (const rule of DEFAULT_CONSTITUTION.rules) assert.ok(c.rules.includes(rule));
+  assert.ok(c.rules.includes('Regola personalizzata innocua'));
 });
 
 test('Objective OS creates a persistent objective and a Decision Mode mission linked to it', () => {
