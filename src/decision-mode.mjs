@@ -1,7 +1,7 @@
 const COMPLEX_KINDS = new Set(['Confronto e decisione', 'Analisi numerica', 'Sviluppo']);
-const HIGH_STAKES = /\b(sicurezz|legale|fisc|medic|salute|invest|mutuo|credito|pagament|bonifico|firma|elimina|cancella|privacy|vulnerabil|rischio)\w*/i;
-const MULTI_OPTION = /\b(confront|scegli|decid|alternativ|opzion|scenario|pro\s+e\s+contro|conviene)\w*/i;
-const VERIFICATION = /\b(verific|controll|fonte|prova|evidenz|audit|test)\w*/i;
+const HIGH_IMPACT = /sicurezz|legale|fisc|salute|invest|mutuo|privacy|rischio/i;
+const MULTI_OPTION = /confront|scegli|decid|alternativ|opzion|scenario|conviene/i;
+const VERIFICATION = /verific|controll|fonte|prova|evidenz|audit|test/i;
 
 const add = (factors, id, points, label) => { factors.push({ id, points, label }); return points; };
 
@@ -22,9 +22,9 @@ export function resolveDecisionMode(job, { engine = 'legacy' } = {}) {
   const factors = [];
   let score = 0;
 
-  if (job?.plan?.action) score += add(factors, 'external-action', 3, 'Richiede una decisione o azione esterna: serve più controllo.');
-  if (COMPLEX_KINDS.has(job?.plan?.kind)) score += add(factors, 'complex-kind', 2, `Tipo di incarico complesso: ${job.plan.kind}.`);
-  if (HIGH_STAKES.test(text)) score += add(factors, 'high-stakes', 2, 'Tema con conseguenze potenzialmente rilevanti.');
+  if (job?.plan?.action) score += add(factors, 'external-action', 3, 'Il brief include un’azione esterna: serve più controllo.');
+  if (COMPLEX_KINDS.has(job?.plan?.kind)) score += add(factors, 'complex-kind', 3, `Tipo di incarico complesso: ${job.plan.kind}.`);
+  if (HIGH_IMPACT.test(text)) score += add(factors, 'high-impact', 3, 'Tema con conseguenze potenzialmente rilevanti.');
   if (MULTI_OPTION.test(text) && !COMPLEX_KINDS.has(job?.plan?.kind)) score += add(factors, 'alternatives', 1, 'Richiede confronto tra alternative o scenari.');
   if (VERIFICATION.test(text) && job?.plan?.kind !== 'Ricerca e verifica') score += add(factors, 'verification', 1, 'Richiede verifica o controprova esplicita.');
   if (text.length > 1200) score += add(factors, 'long-brief', 2, 'Brief lungo: aumenta il rischio di omissioni.');
@@ -36,8 +36,8 @@ export function resolveDecisionMode(job, { engine = 'legacy' } = {}) {
   const needsDebate = score >= 3;
   const executionMode = needsDebate ? (engine === 'secure' ? 'independent' : 'roundtable') : 'fast';
   const reason = needsDebate
-    ? `Decision Mode ha rilevato complessità ${score}/10: ${executionMode === 'roundtable' ? 'convoca specialisti, Direttore e Verity' : 'usa una revisione con modello distinto'}.`
-    : `Decision Mode ha rilevato complessità ${score}/10: una risposta rapida è sufficiente e evita chiamate inutili.`;
+    ? `Decision Mode ha rilevato complessità ${Math.min(score, 10)}/10: ${executionMode === 'roundtable' ? 'convoca specialisti, Direttore e Verity' : 'usa una revisione con modello distinto'}.`
+    : `Decision Mode ha rilevato complessità ${Math.min(score, 10)}/10: una risposta rapida è sufficiente e evita chiamate inutili.`;
 
   return {
     requested: true,
