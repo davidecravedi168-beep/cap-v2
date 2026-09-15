@@ -85,5 +85,4 @@ document.addEventListener('submit', e => {
 document.addEventListener('office-objective-changed', render);
 window.addEventListener('storage', e => { if (e.key === STORE_KEY) render(); });
 window.addEventListener('focus', render);
-const app = document.querySelector('#app'); if (app) new MutationObserver(() => queueMicrotask(render)).observe(app, { childList: true, subtree: true });
 render();
