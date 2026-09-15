@@ -1,4 +1,6 @@
-export const VERSION = '3.1.0';
+import { DEFAULT_CONSTITUTION, createObjectiveRecord, normaliseConstitution, normaliseObjective, objectiveMissionBrief, objectiveProgress, createOutcomeRecord } from './objective-os.mjs';
+
+export const VERSION = '10.0.0';
 export const STORE_KEY = 'the-office:workspace:v3';
 export const LEGACY_API = 'https://br-floral-shadow-aygwywoy-officefree.compute.c-5.us-east-2.aws.neon.tech';
 export const AGENTS = [
@@ -21,6 +23,7 @@ export const STATUS = {
 export const terminal = status => !['queued', 'running'].includes(status);
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clean = value => String(value ?? '').trim();
+
 export function classify(text) {
   const t = clean(text).toLocaleLowerCase('it');
   let team = ['Sage'], kind = 'Incarico generale', area = 'Generale';
@@ -40,17 +43,30 @@ export function classify(text) {
     steps: ['Definire risultato e vincoli', `Preparare il contributo: ${team.join(', ')}`, 'Cercare errori e dati mancanti', 'Consegnare il risultato con i limiti'] };
 }
 
-// Advisory screening only: action execution is denied separately by the gateway.
 export function detectSensitive(text) {
   const t = String(text || '');
   return /\bIT\d{2}[A-Z0-9]{23}\b/i.test(t.replace(/\s/g, '')) ||
     /\b(sk-(?:or-v1-)?[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9]{15,}|Bearer\s+[a-z0-9._-]{20,})/i.test(t) ||
     /\b(password|codice fiscale|cartella clinica|numero carta|credenziali)\s*[:=]/i.test(t);
 }
-export function newWorkspace() {
-  return { version: 3, revision: 0, jobs: [], memory: [], events: [],
-    settings: { paused: false, mode: 'legacy', api: LEGACY_API }, draft: '' };
+
+function upgradeWorkspaceState(state) {
+  state.settings = { ...newWorkspace().settings, ...state.settings };
+  state.objectives = (Array.isArray(state.objectives) ? state.objectives : []).map(normaliseObjective).filter(Boolean).slice(0, 40);
+  state.outcomes = (Array.isArray(state.outcomes) ? state.outcomes : []).filter(o => o && typeof o.id === 'string' && typeof o.objectiveId === 'string' && typeof o.summary === 'string').map(o => ({
+    id: String(o.id).slice(0, 100), objectiveId: String(o.objectiveId).slice(0, 100), jobId: o.jobId ? String(o.jobId).slice(0, 100) : null,
+    summary: String(o.summary).slice(0, 2000), kind: ['accepted-result', 'measured-result', 'note'].includes(o.kind) ? o.kind : 'note',
+    at: Number.isFinite(Date.parse(o.at)) ? o.at : new Date().toISOString(),
+  })).slice(0, 500);
+  state.constitution = normaliseConstitution(state.constitution || DEFAULT_CONSTITUTION);
+  return state;
 }
+
+export function newWorkspace() {
+  return { version: 3, revision: 0, jobs: [], memory: [], events: [], objectives: [], outcomes: [],
+    constitution: normaliseConstitution(DEFAULT_CONSTITUTION), settings: { paused: false, mode: 'legacy', api: LEGACY_API }, draft: '' };
+}
+
 export class Workspace {
   constructor(storage, { now = () => Date.now(), uuid = () => crypto.randomUUID() } = {}) {
     this.storage = storage; this.now = now; this.uuid = uuid; this.listeners = new Set(); this.storageError = '';
@@ -80,8 +96,7 @@ export class Workspace {
         }));
       } catch { this.storageError = 'Lo storico precedente non è leggibile; il dato originale è conservato.'; }
     }
-    state.settings = { ...newWorkspace().settings, ...state.settings };
-    return state;
+    return upgradeWorkspaceState(state);
   }
   subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   emit() { for (const fn of this.listeners) fn(); }
@@ -97,7 +112,7 @@ export class Workspace {
     if (this.readOnly || this.storageError) return;
     try {
       const next = JSON.parse(this.storage.getItem(STORE_KEY) || 'null');
-      if (next?.version === 3 && Array.isArray(next.jobs) && Array.isArray(next.events) && Array.isArray(next.memory)) { this.state = next; this.emit(); }
+      if (next?.version === 3 && Array.isArray(next.jobs) && Array.isArray(next.events) && Array.isArray(next.memory)) { this.state = upgradeWorkspaceState(next); this.emit(); }
     } catch { /* Keep the current in-memory workspace. */ }
   }
   event(type, jobId, detail = '') {
@@ -119,6 +134,7 @@ export class Workspace {
       status: options.draft ? 'draft' : 'queued', priority: options.priority === 'high' ? 'high' : 'normal',
       result: '', contributions: [], error: '', attempt: 1, rating: null, memoryIds: [],
       materials: options.materials || [], previous: options.previous || null, parentId: options.parentId,
+      objectiveId: clean(options.objectiveId).slice(0, 100) || null,
       reviewMode: ['decision', 'fast', 'roundtable', 'independent'].includes(options.reviewMode) ? options.reviewMode : 'fast' };
     this.state.jobs.unshift(job); this.event('created', job.id); this.save(); return job;
   }
@@ -140,6 +156,54 @@ export class Workspace {
     const note = { id: this.uuid(), text, source: jobId, approvedAt: new Date(this.now()).toISOString(), enabled: true };
     this.state.memory.unshift(note); this.event('memory-approved', jobId); this.save(); return note;
   }
+  createObjective(input) {
+    this.refresh();
+    if (this.state.objectives.length >= 40) throw Error('Limite di 40 obiettivi raggiunto. Completa o archivia quelli esistenti.');
+    const objective = createObjectiveRecord(input, { id: this.uuid(), now: this.now() });
+    this.state.objectives.unshift(objective); this.event('objective-created', null, objective.title); this.save(); return objective;
+  }
+  updateObjective(id, patch = {}) {
+    this.refresh();
+    const objective = this.state.objectives.find(o => o.id === id);
+    if (!objective) return null;
+    if (patch.status && !['active', 'paused', 'completed'].includes(patch.status)) throw Error('Stato obiettivo non valido.');
+    if (patch.status) objective.status = patch.status;
+    if (patch.title != null) objective.title = clean(patch.title).slice(0, 120) || objective.title;
+    if (patch.outcome != null) objective.outcome = clean(patch.outcome).slice(0, 1200) || objective.outcome;
+    objective.updatedAt = new Date(this.now()).toISOString();
+    this.event('objective-updated', null, `${objective.title} · ${objective.status}`); this.save(); return objective;
+  }
+  startMission(id, instruction = '') {
+    this.refresh();
+    const objective = this.state.objectives.find(o => o.id === id);
+    if (!objective) throw Error('Obiettivo non trovato.');
+    if (objective.status !== 'active') throw Error('Riattiva l’obiettivo prima di avviare una missione.');
+    const text = objectiveMissionBrief(objective, instruction);
+    const job = this.add(text, { objectiveId: objective.id, project: objective.title, priority: 'high', reviewMode: 'decision', sensitivity: 'public' });
+    this.patch(job.id, { objectiveSnapshot: { title: objective.title, outcome: objective.outcome, kpis: [...objective.kpis], constraints: [...objective.constraints], deadline: objective.deadline, budgetEur: objective.budgetEur } });
+    this.event('objective-mission-created', job.id, objective.title); return this.state.jobs.find(j => j.id === job.id);
+  }
+  recordOutcome(input) {
+    this.refresh();
+    if (this.state.outcomes.length >= 500) throw Error('Outcome Ledger pieno: esporta l’archivio prima di aggiungere altri esiti.');
+    if (!this.state.objectives.some(o => o.id === input?.objectiveId)) throw Error('Obiettivo non trovato.');
+    if (input?.jobId && this.state.outcomes.some(o => o.jobId === input.jobId && o.kind === (input.kind || 'note'))) return this.state.outcomes.find(o => o.jobId === input.jobId && o.kind === (input.kind || 'note'));
+    const outcome = createOutcomeRecord(input, { id: this.uuid(), now: this.now() });
+    this.state.outcomes.unshift(outcome); this.state.outcomes = this.state.outcomes.slice(0, 500);
+    this.event('objective-outcome', outcome.jobId, outcome.summary.slice(0, 180)); this.save(); return outcome;
+  }
+  objectiveProgress(id) {
+    const objective = this.state.objectives.find(o => o.id === id);
+    return objective ? objectiveProgress(objective, this.state.jobs, this.state.outcomes) : null;
+  }
+  addConstitutionRule(text) {
+    text = clean(text);
+    if (!text || text.length > 360) throw Error('La regola deve contenere da 1 a 360 caratteri.');
+    const c = normaliseConstitution(this.state.constitution);
+    if (c.rules.length >= 20) throw Error('Limite di 20 regole costituzionali raggiunto.');
+    if (!c.rules.includes(text)) c.rules.push(text);
+    this.state.constitution = c; this.event('constitution-rule-added', null, text); this.save(); return c;
+  }
   retry(id) {
     const old = this.state.jobs.find(j => j.id === id);
     if (!old || ['queued', 'running'].includes(old.status)) return null;
@@ -153,7 +217,7 @@ export class Workspace {
     if (!clean(instruction)) throw Error('Scrivi cosa vuoi approfondire o correggere.');
     if (old.text.length + old.result.length + clean(instruction).length > 45000) throw Error('Il risultato è troppo lungo per un seguito automatico. Prepara un nuovo brief con i passaggi rilevanti.');
     const next = this.add(instruction, { area: old.area, project: old.project, priority: old.priority, sensitivity: old.sensitivity,
-      parentId: old.id, previous: { text: old.text, result: old.result }, reviewMode: old.reviewMode });
+      objectiveId: old.objectiveId, parentId: old.id, previous: { text: old.text, result: old.result }, reviewMode: old.reviewMode });
     this.event('follow-up-created', next.id, 'Include il risultato precedente'); return next;
   }
   decide(id, decision) {
@@ -161,6 +225,9 @@ export class Workspace {
     if (!job?.result || !['accepted', 'revise'].includes(decision)) return;
     this.patch(id, { ownerDecision: decision, decidedAt: new Date(this.now()).toISOString() });
     this.event('owner-decision', id, decision === 'accepted' ? 'Risultato approvato; nessuna azione esterna' : 'Richiesta una revisione');
+    if (decision === 'accepted' && job.objectiveId && !this.state.outcomes.some(o => o.jobId === job.id && o.kind === 'accepted-result')) {
+      this.recordOutcome({ objectiveId: job.objectiveId, jobId: job.id, kind: 'accepted-result', summary: `Risultato della missione approvato: ${job.result.slice(0, 1200)}` });
+    }
   }
   metrics() {
     const jobs = this.state.jobs.filter(j => !j.migrated), finished = jobs.filter(j => terminal(j.status) && !['draft', 'blocked', 'cancelled'].includes(j.status));
@@ -168,7 +235,8 @@ export class Workspace {
     return { total: this.state.jobs.length, active: jobs.filter(j => ['running', 'queued'].includes(j.status)).length,
       finished: finished.length, ready: ready.length, failed: finished.filter(j => ['failed', 'interrupted'].includes(j.status)).length,
       reviewed: jobs.filter(j => j.review?.independent === true).length, helpful: jobs.filter(j => j.rating === 1).length,
-      ratings: jobs.filter(j => j.rating === 1 || j.rating === -1).length };
+      ratings: jobs.filter(j => j.rating === 1 || j.rating === -1).length,
+      objectives: this.state.objectives.filter(o => o.status === 'active').length, outcomes: this.state.outcomes.length };
   }
 }
 
@@ -193,5 +261,6 @@ export function normaliseResponse(out, mode) {
 export function toMarkdown(job) {
   const actual = job.contributions?.map(c => `${c.agent}: ${c.provider || 'Non dichiarato'} / ${c.model || 'Non dichiarato'}`).join('\n') || 'Non dichiarati';
   const route = job.decisionRoute?.requested ? `\nDecision Mode: ${job.decisionRoute.executionMode} · score ${job.decisionRoute.score}/10\n` : '';
-  return `# ${job.text}\n\nStato: ${STATUS[job.status] || job.status}\nData: ${job.createdAt}\n${route}\n## Risultato\n\n${job.result || job.error || 'Nessun risultato'}\n\n## Revisione\n\n${job.review?.independent ? 'Modello distinto verificato dal gateway.' : 'Revisione indipendente non verificata.'}\n${job.qualityReport || ''}\n\n## Modelli dichiarati dal gateway\n\n${actual}\n\nNessuna azione esterna eseguita.\n`;
+  const objective = job.objectiveId ? `\nObjective OS: missione collegata a ${job.objectiveSnapshot?.title || job.objectiveId}\n` : '';
+  return `# ${job.text}\n\nStato: ${STATUS[job.status] || job.status}\nData: ${job.createdAt}\n${route}${objective}\n## Risultato\n\n${job.result || job.error || 'Nessun risultato'}\n\n## Revisione\n\n${job.review?.independent ? 'Modello distinto verificato dal gateway.' : 'Revisione indipendente non verificata.'}\n${job.qualityReport || ''}\n\n## Modelli dichiarati dal gateway\n\n${actual}\n\nNessuna azione esterna eseguita.\n`;
 }

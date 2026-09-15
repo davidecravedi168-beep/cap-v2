@@ -4,6 +4,7 @@ import { roundtable } from './roundtable.mjs';
 import { ToolRuntime } from './tool-runtime.mjs';
 import { lightConversation } from './light-conversation.mjs';
 import { decisionInstruction, hasDecisionStructure, resolveDecisionMode } from './decision-mode.mjs';
+import { objectiveRuntimeContext } from './objective-os.mjs';
 
 function applyDecisionContract(result, route) {
   if (!route?.requested) return result;
@@ -74,9 +75,8 @@ export class Runtime {
   async execute(job) {
     const ws = this.workspace, mode = ws.state.settings.mode;
 
-    // V9.2: trivial greetings/check-ins are answered locally. No provider, reviewer, tool or network call is needed.
     const light = lightConversation(job?.text);
-    if (light && !job?.materials?.length && !job?.previous) {
+    if (light && !job?.materials?.length && !job?.previous && !job?.objectiveId) {
       ws.event('local-conversation', job.id, light.intent);
       ws.patch(job.id, {
         status: 'completed', result: light.text, qualityReport: '', contributions: [], failures: [],
@@ -90,6 +90,17 @@ export class Runtime {
 
     let context;
     try { context = contextFor(job); } catch (e) { ws.patch(job.id, { status: 'blocked', error: e.message }); return; }
+
+    if (job.objectiveId) {
+      const objective = ws.state.objectives?.find(o => o.id === job.objectiveId) || (job.objectiveSnapshot ? { id: job.objectiveId, ...job.objectiveSnapshot, status: 'active' } : null);
+      if (objective) {
+        context = `${context}\n\n${objectiveRuntimeContext(objective, ws.state.constitution)}`;
+        ws.event('objective-context', job.id, objective.title || job.objectiveId);
+      }
+    }
+    if (job.plan?.action && ws.state.constitution?.requireHumanApprovalForExternalActions !== false) {
+      ws.event('constitution-gate', job.id, 'Azione esterna: solo proposta; autorizzazione umana richiesta.');
+    }
 
     const wantsTools = /(github|repository|\brepo\b|codice|software|bug|implement|deploy|workflow)/i.test(`${job?.text || ''} ${job?.plan?.kind || ''}`);
     if (wantsTools) {
