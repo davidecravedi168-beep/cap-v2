@@ -107,8 +107,13 @@ export function selectAdaptiveTeam(job, jobs = null) {
     const perf = stats.get(agent) || { quality: 0.5, reliability: 0.5, evidence: 0, calls: 0, score: 50 };
     const fit = taskFit(agent, job);
     const adaptiveScore = 0.72 * fit + 0.18 * perf.quality + 0.10 * perf.reliability;
-    return { agent, fit: round(fit), adaptiveScore: round(adaptiveScore), evidence: perf.evidence, calls: perf.calls, performanceScore: perf.score };
-  }).sort((a, b) => b.adaptiveScore - a.adaptiveScore || b.fit - a.fit || a.agent.localeCompare(b.agent));
+    const plannedIndex = planned.indexOf(agent);
+    const poolIndex = pool.indexOf(agent);
+    return {
+      agent, fit: round(fit), adaptiveScore: round(adaptiveScore), evidence: perf.evidence, calls: perf.calls, performanceScore: perf.score,
+      order: plannedIndex >= 0 ? plannedIndex : planned.length + (poolIndex >= 0 ? poolIndex : 99),
+    };
+  }).sort((a, b) => b.adaptiveScore - a.adaptiveScore || b.fit - a.fit || a.order - b.order || a.agent.localeCompare(b.agent));
 
   const selected = [];
   if (ranked[0]) selected.push(ranked[0].agent);
@@ -121,7 +126,7 @@ export function selectAdaptiveTeam(job, jobs = null) {
   const finalSelected = selected.slice(0, 2);
   return {
     version: 'v9.4-deterministic-1', mode: 'adaptive-deterministic', selected: finalSelected,
-    candidates: ranked, historyJobs: history.length,
+    candidates: ranked.map(({ order, ...row }) => row), historyJobs: history.length,
     reason: ranked.some(r => r.evidence >= 3) ? 'Fit del compito + segnali storici locali; il fit resta dominante.' : 'Fit del compito; storico ancora insufficiente per pesare molto.',
     machineLearning: false,
   };
