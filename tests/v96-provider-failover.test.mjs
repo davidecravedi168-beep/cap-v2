@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import gateway, { ROLE_MODEL_BOARD, isProviderErrorText, MODEL_BOARD_VERSION } from '../server/office-multifree.mjs';
 
-test('V10.0.2 excludes exhausted or paid providers from every active zero-cost route', () => {
-  assert.equal(MODEL_BOARD_VERSION, '2026-09-15-v4');
+test('V10.0.5 excludes exhausted or paid providers from every active zero-cost route', () => {
+  assert.equal(MODEL_BOARD_VERSION, '2026-09-15-v5');
   for (const row of Object.values(ROLE_MODEL_BOARD)) {
     assert.ok(row.route.length >= 1);
     assert.equal(row.route.some(step => step.provider === 'Pollinations'), false);
