@@ -54,7 +54,7 @@ export function directObjectiveBrief(objective, policy) {
     `Contesto utile dell’obiettivo: ${clean(objective?.outcome, 1200) || 'nessun contesto aggiuntivo'}`,
     objective?.budgetEur ? `Budget dichiarato: €${Number(objective.budgetEur).toFixed(2)}. È un limite, non un’autorizzazione a spendere.` : '',
     'REGOLE DI RISPOSTA ALL’UTENTE:',
-    '- Rispondi alla richiesta principale già nelle prime una o due frasi, poi aggiungi solo il contesto che migliora davvero la risposta.',
+    '- Rispondi subito alla richiesta principale, già nelle prime una o due frasi, poi aggiungi solo il contesto che migliora davvero la risposta.',
     '- Scrivi come un assistente competente e naturale, non come un verbale, un comitato o una procedura aziendale.',
     '- Non usare automaticamente sezioni come Decisione, Evidenze, Dissenso, Rischi o Richiede autorizzazione. Usa titoli solo se migliorano davvero la leggibilità.',
     '- Non nominare Objective OS, Costituzione, KPI, team, specialisti, provider, routing, controprove o governance interna, salvo che l’utente lo chieda o sia indispensabile per capire un limite concreto.',
