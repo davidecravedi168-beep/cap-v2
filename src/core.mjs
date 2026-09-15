@@ -119,7 +119,7 @@ export class Workspace {
       status: options.draft ? 'draft' : 'queued', priority: options.priority === 'high' ? 'high' : 'normal',
       result: '', contributions: [], error: '', attempt: 1, rating: null, memoryIds: [],
       materials: options.materials || [], previous: options.previous || null, parentId: options.parentId,
-      reviewMode: ['decision', 'fast', 'roundtable', 'independent'].includes(options.reviewMode) ? options.reviewMode : 'decision' };
+      reviewMode: ['decision', 'fast', 'roundtable', 'independent'].includes(options.reviewMode) ? options.reviewMode : 'fast' };
     this.state.jobs.unshift(job); this.event('created', job.id); this.save(); return job;
   }
   patch(id, patch) {
@@ -145,7 +145,7 @@ export class Workspace {
     if (!old || ['queued', 'running'].includes(old.status)) return null;
     const next = this.add(old.text, { ...old, draft: false });
     const usedRoundtable = old.reviewMode === 'roundtable' || old.reviewMode === 'decision' && old.resolvedReviewMode === 'roundtable';
-    return this.patch(next.id, { parentId: old.id, attempt: (old.attempt || 1) + 1, reviewMode: old.reviewMode || 'decision', memoryIds: [...(old.memoryIds || [])], checkpoint: usedRoundtable && ['interrupted', 'failed', 'cancelled'].includes(old.status) ? old.checkpoint : null });
+    return this.patch(next.id, { parentId: old.id, attempt: (old.attempt || 1) + 1, reviewMode: old.reviewMode || 'fast', memoryIds: [...(old.memoryIds || [])], checkpoint: usedRoundtable && ['interrupted', 'failed', 'cancelled'].includes(old.status) ? old.checkpoint : null });
   }
   followUp(id, instruction) {
     const old = this.state.jobs.find(j => j.id === id);
