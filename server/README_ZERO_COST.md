@@ -4,18 +4,24 @@ Backend attivo: Neon Function `officefree` sul piano Neon Free.
 
 ## Regola economica
 
-Ogni chiamata OpenRouter usa solo modelli `:free` o `openrouter/free` e imposta `provider.max_price.prompt = 0` e `provider.max_price.completion = 0`. Se non esiste un endpoint gratuito disponibile, la richiesta fallisce. Non esiste fallback a pagamento.
+Il percorso pubblico etichettato `0 €` può chiamare solo provider che, al momento del deploy, non richiedono pagamento o credito sviluppatore. Non esiste fallback a pagamento e un errore del provider non viene mai trasformato in una spesa automatica.
 
-La ricerca web OpenRouter non viene attivata perché comporta costi separati anche con modelli gratuiti.
+Provider pubblico attivo: **Vireonix `auto`**.
 
-## Segreto server-side
+Provider esclusi dal percorso zero-cost:
+- **BlockRun** — le Chat Completions correnti richiedono pagamento x402;
+- **Pollinations** — la key precedentemente usata ha raggiunto il budget del provider.
 
-La sola variabile da configurare nella Neon Function è:
+Se l’unico provider gratuito è temporaneamente indisponibile o rate-limited, il job fallisce in modo trasparente con `zeroCost: true` e, quando appropriato, `retryable: true`.
 
-`OPENROUTER_API_KEY`
+## Ruoli
 
-Va impostata nell'ambiente della funzione Neon e non nel browser, non in GitHub Pages e non nel repository.
+Direttore, Ledger, Coda, Sage, Verity e gli altri ruoli restano distinti tramite istruzioni specialistiche e orchestrazione. Il sistema non dichiara modelli differenti quando il provider effettivo è lo stesso: provenienza e modello realmente restituiti vengono registrati per ogni chiamata.
 
-## Quota
+## Timeout
 
-Il client limita il team a tre ruoli e il gateway esegue al massimo due specialisti, poi Quality e Direttore. Questo contiene il numero di richieste e rende il sistema compatibile con una quota free limitata. Se la quota finisce, il job fallisce senza spesa.
+Il gateway V10.0.2 assegna a Vireonix fino a circa 26 secondi dentro un budget complessivo di 28 secondi. In precedenza parte del tempo veniva consumato da provider non più realmente gratuiti, lasciando al fallback una finestra troppo breve.
+
+## Sicurezza e costi
+
+Bolt e StackBlitz restano bloccati dal Cost Guard. Pagamenti, cancellazioni, pubblicazioni e altre azioni esterne non vengono autorizzati da un semplice budget dell’obiettivo e continuano a richiedere controllo umano secondo la Company Constitution.
