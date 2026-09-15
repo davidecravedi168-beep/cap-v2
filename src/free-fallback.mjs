@@ -25,9 +25,10 @@ export function clearOpenRouterKey(storage = globalThis.sessionStorage) {
   try { storage?.removeItem?.(OPENROUTER_SESSION_KEY); } catch { /* session storage unavailable */ }
 }
 
-function providerErrorText(text) {
+export function isOpenRouterProviderErrorText(text) {
   const s = String(text || '').trim();
-  return /rate limit|quota|insufficient|payment required|billing|credits?|capacity|overloaded|temporarily unavailable/i.test(s);
+  if (!s || s.length > 1400) return false;
+  return /rate limit (?:has been )?exceeded|quota (?:has been )?exceeded|insufficient (?:credits?|balance)|payment required|billing limit|capacity (?:is )?(?:unavailable|exhausted)|temporarily unavailable|service overloaded/i.test(s);
 }
 
 export async function openRouterFreeFallback({ text, agent = 'Direttore', signal, fetcher = (...args) => globalThis.fetch(...args), storage = globalThis.sessionStorage } = {}) {
@@ -64,7 +65,7 @@ export async function openRouterFreeFallback({ text, agent = 'Direttore', signal
     throw Error(`OpenRouter Free: ${String(detail).slice(0, 240)}`);
   }
   const answer = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || '';
-  if (!String(answer).trim() || providerErrorText(answer)) throw Error('OpenRouter Free: risposta non valida o capacità gratuita non disponibile.');
+  if (!String(answer).trim() || isOpenRouterProviderErrorText(answer)) throw Error('OpenRouter Free: risposta non valida o capacità gratuita non disponibile.');
   const model = String(data?.model || OPENROUTER_MODEL);
   return {
     status: 'completed',
