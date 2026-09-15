@@ -23,10 +23,11 @@ test('A reviewer rejecting a draft prevents completed status', async () => {
   const result = await roundtable(job, async agent => ({ ...sample(agent), text: agent === 'Verity' ? '{"verdict":"reject","issues":["dato inventato"],"summary":"Non approvare"}' : 'Bozza' }), { context: job.text });
   assert.equal(result.status, 'partial'); assert.equal(result.review.status, 'reject'); assert.match(result.qualityReport, /dato inventato/);
 });
-test('Partial provider failure preserves successful contributions and exposes failure', async () => {
+test('Provider failure preserves successful contributions, exposes degradation and still delivers a verified synthesis', async () => {
   const ws = office(), job = ws.add('Confronta opzioni');
   const result = await roundtable(job, async agent => { if (agent === 'Lumen') throw Error('Quota gratuita'); return sample(agent); }, { context: job.text });
-  assert.equal(result.status, 'partial'); assert.equal(result.result, 'Contributo di Direttore'); assert.equal(result.failures[0].agent, 'Lumen');
+  assert.equal(result.status, 'completed'); assert.equal(result.result, 'Contributo di Direttore'); assert.equal(result.failures[0].agent, 'Lumen');
+  assert.equal(result.review.status, 'pass'); assert.equal(result.delivery.degraded, true);
 });
 test('Interrupted roundtables resume saved stages without repeating successful calls', async () => {
   const ws = office(), job = ws.add('Confronta due opzioni', { reviewMode: 'roundtable' }); const controller = new AbortController(); let checkpoint;
