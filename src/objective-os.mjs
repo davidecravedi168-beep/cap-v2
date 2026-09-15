@@ -23,16 +23,16 @@ const lines = (value, maxItems = 12, maxEach = 240) => {
 };
 
 export function normaliseConstitution(value = {}) {
+  const custom = lines(value?.rules, 20, 360);
+  const rules = [...new Set([...DEFAULT_CONSTITUTION.rules, ...custom])].slice(0, 20);
   return {
-    ...DEFAULT_CONSTITUTION,
-    ...(value && typeof value === 'object' ? value : {}),
     version: 1,
-    zeroCostFirst: value?.zeroCostFirst !== false,
-    requireHumanApprovalForExternalActions: value?.requireHumanApprovalForExternalActions !== false,
-    allowAutonomousDeletion: value?.allowAutonomousDeletion === true,
-    allowAutonomousPayments: value?.allowAutonomousPayments === true,
-    allowAutonomousPublishing: value?.allowAutonomousPublishing === true,
-    rules: lines(value?.rules?.length ? value.rules : DEFAULT_CONSTITUTION.rules, 20, 360),
+    zeroCostFirst: true,
+    requireHumanApprovalForExternalActions: true,
+    allowAutonomousDeletion: false,
+    allowAutonomousPayments: false,
+    allowAutonomousPublishing: false,
+    rules,
   };
 }
 
