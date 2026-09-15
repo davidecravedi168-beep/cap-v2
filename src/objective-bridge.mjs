@@ -1,12 +1,10 @@
 import { STORE_KEY, Workspace } from './core.mjs';
-import { Runtime } from './runtime.mjs';
 import { validateArchive } from './archive.mjs';
 import { normaliseConstitution } from './objective-os.mjs';
 
 let storage;
 try { storage = window.localStorage; } catch { storage = { getItem: () => null, setItem: () => { throw Error('Storage unavailable'); } }; }
 const ws = new Workspace(storage);
-const runtime = new Runtime(ws);
 let objectiveImportCandidate = null;
 
 function toast(text) {
@@ -23,6 +21,9 @@ function notify() {
   document.dispatchEvent(new Event('office-objective-changed'));
 }
 
+// Objective OS shares the same persisted workspace as the main app, but execution
+// belongs to the single Runtime created by app.mjs. Keeping a second Runtime here
+// can race the primary UI/runtime and leave the mission view stale.
 ws.subscribe(() => notify());
 
 document.addEventListener('office-objective-create', e => {
@@ -33,9 +34,11 @@ document.addEventListener('office-objective-create', e => {
 document.addEventListener('office-objective-mission', e => {
   try {
     const job = ws.startMission(e.detail?.id);
-    toast('Missione creata. Il Direttore ha ricevuto obiettivo, KPI e vincoli.');
+    toast('Missione creata e affidata al Runtime principale.');
     queueMicrotask(() => document.querySelector(`[data-job="${job.id}"]`)?.click());
-    void runtime.pump();
+    // app.mjs already owns the only Runtime and pumps on visibility changes.
+    // Wake it immediately after the storage refresh instead of creating a second executor.
+    queueMicrotask(() => document.dispatchEvent(new Event('visibilitychange')));
   } catch (err) { toast(err.message || 'Missione non creata.'); }
 });
 
