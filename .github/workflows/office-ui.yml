@@ -19,3 +19,15 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - name: V9.3 preview Model Board smoke
+        if: github.event_name == 'pull_request' && github.head_ref == 'office-v93-real-model-board'
+        env:
+          OFFICE_PREVIEW: https://br-ancient-rain-aydxyv4k-officefree.compute.c-5.us-east-2.aws.neon.tech
+        run: |
+          set -euo pipefail
+          health="$(curl --fail --silent --show-error --max-time 20 "$OFFICE_PREVIEW/health")"
+          echo "$health" | jq -e '.ok == true and .zeroCost == true and .roleRouting == true and .modelBoard.Coda.preferred.model == "cohere/north-mini-code" and .modelBoard.Verity.preferred.provider == "Vireonix"' >/dev/null
+          coda="$(curl --fail --silent --show-error --max-time 40 -H 'Origin: https://davidecravedi168-beep.github.io' -H 'Content-Type: application/json' --data '{"id":"ci-live-coda","text":"Scrivi una funzione JavaScript add(a,b) in una riga.","team":["Coda"],"zeroCost":true,"intent":"draft-only"}' "$OFFICE_PREVIEW/v1/jobs")"
+          echo "$coda" | jq -e '.status == "completed" and .zeroCost == true and .routedAgent == "Coda" and .preferred.model == "cohere/north-mini-code" and (.provider|length>0) and (.model|length>0)' >/dev/null
+          verity="$(curl --fail --silent --show-error --max-time 40 -H 'Origin: https://davidecravedi168-beep.github.io' -H 'Content-Type: application/json' --data '{"id":"ci-live-verity","text":"Controlla criticamente questa frase: 2+2=5. Rispondi in una riga.","team":["Verity"],"zeroCost":true,"intent":"draft-only"}' "$OFFICE_PREVIEW/v1/jobs")"
+          echo "$verity" | jq -e '.status == "completed" and .zeroCost == true and .routedAgent == "Verity" and .preferred.provider == "Vireonix" and (.provider|length>0) and (.model|length>0)' >/dev/null
