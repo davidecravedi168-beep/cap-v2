@@ -67,9 +67,10 @@ test('V10.0.4 direct prompt asks for a natural answer and suppresses internal vo
 test('V10.0.4 UI loads the invisible presentation layer and hides direct-only bureaucracy', async () => {
   const index = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const source = await readFile(new URL('../src/invisible-office.mjs', import.meta.url), 'utf8');
+  const presentation = await readFile(new URL('../src/presentation.mjs', import.meta.url), 'utf8');
   assert.match(index, /src\/invisible-office\.mjs/);
   assert.match(source, /review-state/);
   assert.match(source, /decision-desk/);
   assert.match(source, /Piano proposto e confini dell’incarico/);
-  assert.match(source, /Dettagli tecnici/);
+  assert.match(presentation, /Dettagli tecnici/);
 });
