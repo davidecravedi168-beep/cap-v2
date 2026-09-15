@@ -74,6 +74,8 @@ export async function roundtable(job, call, { context, checkpoint = async () => 
     }
   }
 
+  const teamReport = `Team adattivo: ${specialists.join(', ')}. ${teamDecision.reason} Metodo: ranking deterministico locale, non machine learning.`;
+  qualityReport = [teamReport, qualityReport].filter(Boolean).join('\n\n');
   const noBlockingReview = review.status === 'pass';
   return {
     result: answer.text,
