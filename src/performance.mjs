@@ -1,4 +1,4 @@
-import { AGENTS } from './core.mjs';
+import { AGENTS, STORE_KEY } from './core.mjs';
 
 const SPECIALISTS = AGENTS.map(a => a.id).filter(id => !['Direttore', 'Verity'].includes(id));
 const clamp = n => Math.max(0, Math.min(1, Number(n) || 0));
@@ -23,6 +23,14 @@ const KEYWORD_FIT = {
   Ledger: /calcol|numer|budget|simul|rendimento|percentual|costo|finanz/i,
   Archivist: /memori|storico|archiv|recuper|ricorda|retrieval/i,
 };
+
+function localJobs() {
+  try {
+    const raw = globalThis.localStorage?.getItem?.(STORE_KEY);
+    const state = raw ? JSON.parse(raw) : null;
+    return Array.isArray(state?.jobs) ? state.jobs : [];
+  } catch { return []; }
+}
 
 function modelKey(c) {
   const provider = String(c?.provider || '').trim();
@@ -88,12 +96,13 @@ function isComplex(job) {
   return text.length > 220 || /confront|alternativ|risch|verific|implement|decision|strateg|numer|budget|sicurezz|vincol|audit|scenario/i.test(text);
 }
 
-export function selectAdaptiveTeam(job, jobs = []) {
+export function selectAdaptiveTeam(job, jobs = null) {
   if (job?.checkpoint?.teamDecision?.selected?.length) return job.checkpoint.teamDecision;
+  const history = Array.isArray(jobs) && jobs.length ? jobs : localJobs();
   const planned = (job?.plan?.team || []).filter(a => SPECIALISTS.includes(a));
   const pool = KIND_POOL[job?.plan?.kind] || KIND_POOL['Incarico generale'];
   const candidates = [...new Set([...planned, ...pool])].filter(a => SPECIALISTS.includes(a));
-  const stats = new Map(performanceBoard(jobs).map(row => [row.agent, row]));
+  const stats = new Map(performanceBoard(history).map(row => [row.agent, row]));
   const ranked = candidates.map(agent => {
     const perf = stats.get(agent) || { quality: 0.5, reliability: 0.5, evidence: 0, calls: 0, score: 50 };
     const fit = taskFit(agent, job);
@@ -112,7 +121,7 @@ export function selectAdaptiveTeam(job, jobs = []) {
   const finalSelected = selected.slice(0, 2);
   return {
     version: 'v9.4-deterministic-1', mode: 'adaptive-deterministic', selected: finalSelected,
-    candidates: ranked, historyJobs: Array.isArray(jobs) ? jobs.length : 0,
+    candidates: ranked, historyJobs: history.length,
     reason: ranked.some(r => r.evidence >= 3) ? 'Fit del compito + segnali storici locali; il fit resta dominante.' : 'Fit del compito; storico ancora insufficiente per pesare molto.',
     machineLearning: false,
   };
